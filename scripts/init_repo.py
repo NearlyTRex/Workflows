@@ -3,6 +3,7 @@
 Usage:
     init_repo.py TARGET [--stack python|cpp|shell|data] [--version-file FILE | --no-release]
                         [--ref REF] [--force] [--dry-run]
+    init_repo.py TARGET --repin [--ref REF]
 
 Writes into TARGET/.github:
     workflows/ci.yml               lint, plus python-ci for Python repos
@@ -15,6 +16,9 @@ Writes into TARGET/.github:
 Every library reference is pinned to the commit of REF (default: this repo's latest
 tag) with the tag as a comment, which is what lets Dependabot bump the pin when the
 library is released. Existing files are left alone unless --force is given.
+
+--repin moves every library pin in TARGET's workflows to REF and changes nothing else,
+so customized callers can be upgraded without regenerating them.
 """
 
 import argparse
@@ -313,6 +317,21 @@ updates:
 """
 
 
+def repin(target, ref=None):
+    """Point every library reference in target's workflows at ref. Returns the changed files."""
+    target = Path(target).resolve()
+    sha, label = resolve_ref(ref)
+    pattern = re.compile(rf"({re.escape(library_name())}/\.github/workflows/[\w.-]+\.ya?ml)@[0-9a-f]{{40}}(?: # \S+)?")
+    changed = []
+    for path in sorted((target / ".github" / "workflows").glob("*.y*ml")):
+        text = path.read_text()
+        updated = pattern.sub(lambda m: f"{m.group(1)}@{sha} # {label}", text)
+        if updated != text:
+            path.write_text(updated)
+            changed.append(path.name)
+    return changed, label
+
+
 def plan(target, stack=None, version_file=None, release=True, ref=None):
     target = Path(target).resolve()
     if not target.is_dir():
@@ -347,7 +366,17 @@ def main(argv=None):
     parser.add_argument("--ref", help="Library tag or commit to pin (default: latest tag)")
     parser.add_argument("--force", action="store_true", help="Overwrite existing files")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be written")
+    parser.add_argument("--repin", action="store_true", help="Only move existing library pins to --ref")
     args = parser.parse_args(argv)
+
+    if args.repin:
+        try:
+            changed, label = repin(args.target, args.ref)
+        except InitError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        print(f"Pinned to {label}: {', '.join(changed)}" if changed else "No library pins found to move")
+        return 0
 
     try:
         target, stack, version_file, outputs, warnings = plan(

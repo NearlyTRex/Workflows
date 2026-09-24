@@ -244,3 +244,28 @@ def test_settings_without_release(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "no release workflows" in out and "Dependency graph" in out
     assert "create and approve pull requests" not in out
+
+
+def test_repin_moves_only_the_pins(tmp_path, capsys):
+    repo = make_repo(tmp_path, PYTHON)
+    init_repo.main([str(repo), "--ref", "HEAD"])
+    ci = repo / ".github/workflows/ci.yml"
+    ci.write_text(ci.read_text().replace("    # with:\n", "    with:\n      commands: make check\n"))
+    (repo / ".github/workflows/other.yml").write_text("uses: someone/else/x.yml@" + "b" * 40 + " # v9\n")
+    older = subprocess.run(["git", "-C", str(ROOT), "rev-list", "--max-parents=0", "HEAD"], capture_output=True,
+                           text=True, check=True).stdout.split()[0]
+
+    assert init_repo.main([str(repo), "--repin", "--ref", older]) == 0
+    assert "Pinned to " in capsys.readouterr().out
+    text = ci.read_text()
+    assert f"@{older} # {older}" in text and SHA not in text
+    assert "commands: make check" in text
+    assert (repo / ".github/workflows/other.yml").read_text().endswith("@" + "b" * 40 + " # v9\n")
+
+
+def test_repin_without_pins(tmp_path, capsys):
+    repo = make_repo(tmp_path, {"a.sh": ""})
+    (repo / ".github/workflows").mkdir(parents=True)
+    assert init_repo.main([str(repo), "--repin", "--ref", "HEAD"]) == 0
+    assert "No library pins found" in capsys.readouterr().out
+    assert init_repo.main([str(repo), "--repin", "--ref", "no-such-ref"]) == 1
