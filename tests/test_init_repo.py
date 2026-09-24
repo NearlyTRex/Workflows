@@ -202,17 +202,33 @@ def test_library_name_without_remote(monkeypatch):
     assert init_repo.library_name() == init_repo.DEFAULT_LIBRARY
 
 
-def test_latest_tag_is_the_default_ref(monkeypatch):
-    answers = {"describe": "v1.2.0", "rev-list": "a" * 40}
-    monkeypatch.setattr(init_repo, "git", lambda repo, *args: answers[args[0]])
-    assert init_repo.resolve_ref(None) == ("a" * 40, "v1.2.0")
+def fake_git(tags, fetch_fails=False):
+    calls = []
+
+    def git(repo, *args):
+        calls.append(args[0])
+        if args[0] == "fetch" and fetch_fails:
+            raise init_repo.InitError("offline")
+        return {"fetch": "", "tag": "\n".join(tags), "rev-list": "a" * 40}[args[0]]
+    return git, calls
+
+
+def test_highest_tag_is_the_default_ref_after_fetching(monkeypatch):
+    git, calls = fake_git(["v0.10.0", "v0.9.0", "v0.2.0"])
+    monkeypatch.setattr(init_repo, "git", git)
+    assert init_repo.resolve_ref(None) == ("a" * 40, "v0.10.0")
+    assert calls[0] == "fetch"
+
+
+def test_offline_falls_back_to_local_tags(monkeypatch, capsys):
+    git, _ = fake_git(["v0.1.0"], fetch_fails=True)
+    monkeypatch.setattr(init_repo, "git", git)
+    assert init_repo.resolve_ref(None) == ("a" * 40, "v0.1.0")
+    assert "could not fetch tags" in capsys.readouterr().err
 
 
 def test_untagged_library_needs_a_ref(monkeypatch):
-    def git(repo, *args):
-        if args[0] == "describe":
-            raise init_repo.InitError("no tags")
-        return "a" * 40
+    git, _ = fake_git([])
     monkeypatch.setattr(init_repo, "git", git)
     with pytest.raises(init_repo.InitError, match="no release tag yet"):
         init_repo.resolve_ref(None)

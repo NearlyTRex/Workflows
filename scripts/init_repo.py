@@ -56,13 +56,21 @@ def library_name():
     return match.group(1) if match else DEFAULT_LIBRARY
 
 
+def latest_tag():
+    """The highest vX.Y.Z tag, after fetching so a stale clone doesn't pin an old release."""
+    try:
+        git(LIBRARY_ROOT, "fetch", "--quiet", "--tags", "origin")
+    except InitError as e:
+        print(f"warning: could not fetch tags, using local ones ({e})", file=sys.stderr)
+    tags = git(LIBRARY_ROOT, "tag", "--list", "v[0-9]*", "--sort=-v:refname").split()
+    if not tags:
+        raise InitError("the library has no release tag yet; release it first or pass --ref")
+    return tags[0]
+
+
 def resolve_ref(ref):
     """Return (sha, label) for the library commit that callers pin."""
-    if ref is None:
-        try:
-            ref = git(LIBRARY_ROOT, "describe", "--tags", "--abbrev=0")
-        except InitError:
-            raise InitError("the library has no release tag yet; release it first or pass --ref")
+    ref = ref or latest_tag()
     sha = git(LIBRARY_ROOT, "rev-list", "-n", "1", ref)
     return sha, ref
 
