@@ -59,6 +59,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
           git commit -m "Release $TAG" -- "$VERSION_FILE"
-          git push origin "$branch"
-          gh pr create --base "$BASE" --head "$branch" --title "Release $TAG" \
-            --body "Sets the version to $VERSION in \`$VERSION_FILE\`. Merging this tags $TAG and publishes the release."
+          # The branch belongs to this workflow, so a re-run after a failure replaces it.
+          git push --force origin "$branch"
+          if url="$(gh pr view "$branch" --json url,state --jq 'select(.state == "OPEN") | .url' 2>/dev/null)" \
+              && [ -n "$url" ]; then
+            echo "Updated the open pull request: $url"
+          else
+            gh pr create --base "$BASE" --head "$branch" --title "Release $TAG" \
+              --body "Sets the version to $VERSION in \`$VERSION_FILE\`. Merging this tags $TAG and publishes the release."
+          fi
