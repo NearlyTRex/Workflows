@@ -1,0 +1,29 @@
+name: Trivy image scan
+description: >-
+  Scans a saved container image tarball for vulnerabilities that have a fix
+  available. A CVE with no fix is not something a rebuild can resolve.
+
+inputs:
+  input:
+    description: Image tarball from docker save, relative to the workspace
+    required: true
+  severity:
+    description: Severities that fail the scan
+    required: false
+    default: HIGH,CRITICAL
+
+runs:
+  using: docker
+  image: Dockerfile
+  args:
+    - image
+    - --input
+    - ${{ inputs.input }}
+    - --severity
+    - ${{ inputs.severity }}
+    - --ignore-unfixed
+    - --scanners
+    - vuln
+    - --exit-code
+    - "1"
+    - --no-progress

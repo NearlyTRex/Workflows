@@ -1,0 +1,10 @@
+name: gitleaks
+description: >-
+  Scans the whole git history for committed secrets. A secret that was
+  committed and later deleted is still published. Reads .gitleaks.toml from the
+  repository root when present. Needs a checkout with fetch-depth 0.
+
+runs:
+  using: docker
+  image: Dockerfile
+  args: ["git", "--redact", "--no-banner", "--exit-code", "1", "."]

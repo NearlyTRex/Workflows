@@ -1,0 +1,88 @@
+name: python ci
+
+# Installs the project (from its hash-locked dev requirements when present),
+# lints it with ruff, runs any extra commands, then the tests.
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: "3.12"
+      working-directory:
+        type: string
+        default: "."
+      lock-file:
+        description: Hash-locked dev requirements. Without it the project installs with pip install -e ".[dev]".
+        type: string
+        default: requirements-dev.lock
+      ruff:
+        type: boolean
+        default: true
+      ruff-select:
+        description: Rules for repos without their own ruff config. A repo's [tool.ruff] or ruff.toml wins.
+        type: string
+        default: E4,E7,E9,F
+      commands:
+        description: Extra shell commands run after install and before the tests
+        type: string
+        default: ""
+      test-command:
+        type: string
+        default: pytest -q
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install
+        env:
+          LOCK: ${{ inputs.lock-file }}
+        run: |
+          if [ -f "$LOCK" ]; then
+            pip install --require-hashes --no-deps -r "$LOCK"
+            pip install --no-deps --no-build-isolation -e .
+          else
+            pip install -e ".[dev]"
+          fi
+
+      - if: inputs.ruff
+        uses: $/actions/setup-tools
+
+      - name: Ruff
+        if: inputs.ruff
+        env:
+          SELECT: ${{ inputs.ruff-select }}
+        run: |
+          ruff="$RUNNER_TEMP/workflow-tools/bin/ruff"
+          if grep -qs '^\[tool\.ruff' pyproject.toml || [ -f ruff.toml ] || [ -f .ruff.toml ]; then
+            "$ruff" check --output-format github .
+          else
+            "$ruff" check --select "$SELECT" --output-format github .
+          fi
+
+      - name: Commands
+        if: inputs.commands != ''
+        env:
+          COMMANDS: ${{ inputs.commands }}
+        run: bash -euo pipefail -c "$COMMANDS"
+
+      - name: Tests
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: bash -euo pipefail -c "$TEST_COMMAND"

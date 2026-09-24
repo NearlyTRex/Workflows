@@ -1,0 +1,22 @@
+name: self release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  check:
+    uses: $/.github/workflows/lint.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: check
+    uses: $/.github/workflows/release.yml
+    permissions:
+      contents: write
+    with:
+      version-file: VERSION
+      title: Workflows

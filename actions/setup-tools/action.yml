@@ -1,0 +1,24 @@
+name: Set up workflow tools
+description: >-
+  Installs zizmor, pip-audit, ruff and shellcheck from a hash-locked file into a
+  private venv at $RUNNER_TEMP/workflow-tools. Later steps call them by full path,
+  so PATH and the caller's own Python are left alone.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      id: python
+      with:
+        python-version: "3.12"
+        update-environment: false
+
+    - name: Install tools
+      shell: bash
+      env:
+        PYTHON: ${{ steps.python.outputs.python-path }}
+        LOCK: ${{ github.action_path }}/requirements.lock
+      run: |
+        venv="$RUNNER_TEMP/workflow-tools"
+        "$PYTHON" -m venv "$venv"
+        "$venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes --no-deps -r "$LOCK"

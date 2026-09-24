@@ -1,0 +1,10 @@
+name: Check JSON
+description: Fails if any tracked *.json file is not valid JSON.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/check_json.py
+      run: python3 "$SCRIPT"

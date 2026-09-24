@@ -1,0 +1,22 @@
+name: zizmor
+description: >-
+  Audits the repository's workflows and actions for security problems, requiring
+  every third-party action to be pinned to a commit hash.
+
+inputs:
+  token:
+    description: Token for zizmor's online audits (impostor commits, known-vulnerable actions)
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: $/actions/setup-tools
+
+    - name: Audit workflows
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        CONFIG: ${{ github.action_path }}/zizmor.yml
+      run: '"$RUNNER_TEMP/workflow-tools/bin/zizmor" --config "$CONFIG" --format github .'

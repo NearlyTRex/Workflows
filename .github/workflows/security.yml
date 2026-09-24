@@ -1,0 +1,64 @@
+name: security
+
+# Supply-chain and secret checks: zizmor over the workflows, gitleaks over the
+# whole git history, and pip-audit over any hash-locked requirement files.
+on:
+  workflow_call:
+    inputs:
+      zizmor:
+        type: boolean
+        default: true
+      gitleaks:
+        type: boolean
+        default: true
+      pip-audit-files:
+        description: Space-separated hash-locked requirement files to audit
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  zizmor:
+    if: inputs.zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/actions/zizmor
+
+  gitleaks:
+    if: inputs.gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: $/actions/gitleaks
+
+  pip-audit:
+    if: inputs.pip-audit-files != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/actions/setup-tools
+      - name: pip-audit
+        env:
+          FILES: ${{ inputs.pip-audit-files }}
+        run: |
+          args=()
+          for file in $FILES; do args+=(-r "$file"); done
+          "$RUNNER_TEMP/workflow-tools/bin/pip-audit" --require-hashes --disable-pip --strict --progress-spinner off "${args[@]}"

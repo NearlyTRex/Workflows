@@ -1,0 +1,51 @@
+name: codeql
+
+on:
+  workflow_call:
+    inputs:
+      languages:
+        description: 'JSON list of CodeQL languages, e.g. ["python", "actions"] or ["c-cpp"]'
+        type: string
+        default: '["actions"]'
+      build-mode:
+        description: none, autobuild or manual
+        type: string
+        default: none
+      build-command:
+        description: Build commands when build-mode is manual
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(inputs.languages) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ inputs.build-mode }}
+
+      - name: Build
+        if: inputs.build-mode == 'manual'
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: bash -euo pipefail -c "$BUILD_COMMAND"
+
+      - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          category: /language:${{ matrix.language }}

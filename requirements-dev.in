@@ -1,0 +1,4 @@
+# Test dependencies for this repo. Regenerate requirements-dev.lock after editing:
+#   pip-compile --generate-hashes --allow-unsafe -o requirements-dev.lock requirements-dev.in
+pytest
+pyyaml

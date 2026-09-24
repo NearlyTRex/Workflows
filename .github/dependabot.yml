@@ -1,0 +1,35 @@
+version: 2
+
+# Weekly, grouped, and 7 days behind upstream releases so a compromised release
+# has time to be caught before it is proposed here. Every repo pinned to this
+# library picks these updates up when it moves to the next library release.
+updates:
+  - package-ecosystem: github-actions
+    directories: ["/", "/actions/*"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directories: ["/", "/actions/setup-tools", "/tests/fixtures/python-app"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories: ["/actions/gitleaks", "/actions/trivy", "/tests/fixtures/python-app"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns: ["*"]

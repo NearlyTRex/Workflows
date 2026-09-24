@@ -1,0 +1,35 @@
+name: Project version
+description: >-
+  Reads the X.Y.Z version from pyproject.toml, package.json, CMakeLists.txt or a
+  plain VERSION file, and optionally bumps it in place.
+
+inputs:
+  file:
+    description: File holding the version
+    required: true
+  bump:
+    description: "patch, minor, major or X.Y.Z. Leave empty to only read."
+    required: false
+    default: ""
+
+outputs:
+  version:
+    description: The version after any bump
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/version.py
+        FILE: ${{ inputs.file }}
+        BUMP: ${{ inputs.bump }}
+      run: |
+        if [ -n "$BUMP" ]; then
+          version="$(python3 "$SCRIPT" bump "$FILE" "$BUMP")"
+        else
+          version="$(python3 "$SCRIPT" read "$FILE")"
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"

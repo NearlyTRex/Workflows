@@ -1,0 +1,6 @@
+# Tools the reusable workflows run. Regenerate requirements.lock after editing:
+#   pip-compile --generate-hashes --allow-unsafe -o requirements.lock requirements.in
+zizmor
+pip-audit
+ruff
+shellcheck-py

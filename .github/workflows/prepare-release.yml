@@ -1,0 +1,64 @@
+name: prepare release
+
+# Stage one of a release: bump the version file on a release/vX.Y.Z branch and
+# open a pull request. Merging it lets release.yml tag and publish.
+on:
+  workflow_call:
+    inputs:
+      bump:
+        description: patch, minor, major or X.Y.Z
+        type: string
+        required: true
+      version-file:
+        description: pyproject.toml, package.json, CMakeLists.txt or a plain VERSION file
+        type: string
+        required: true
+      tag-prefix:
+        type: string
+        default: v
+    outputs:
+      version:
+        value: ${{ jobs.prepare.outputs.version }}
+
+permissions: {}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # Credentials stay on so the job can push the release branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
+
+      - id: version
+        uses: $/actions/version
+        with:
+          file: ${{ inputs.version-file }}
+          bump: ${{ inputs.bump }}
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag-prefix }}${{ steps.version.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_FILE: ${{ inputs.version-file }}
+        run: |
+          if gh api "repos/$REPO/git/ref/tags/$TAG" --silent 2>/dev/null; then
+            echo "::error::Tag $TAG already exists"
+            exit 1
+          fi
+          branch="release/$TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "Release $TAG" -- "$VERSION_FILE"
+          git push origin "$branch"
+          gh pr create --base "$BASE" --head "$branch" --title "Release $TAG" \
+            --body "Sets the version to $VERSION in \`$VERSION_FILE\`. Merging this tags $TAG and publishes the release."

@@ -1,0 +1,41 @@
+name: container scan
+
+# Builds the image and fails on HIGH or CRITICAL vulnerabilities that have a fix.
+on:
+  workflow_call:
+    inputs:
+      dockerfile:
+        type: string
+        default: Dockerfile
+      context:
+        type: string
+        default: "."
+      severity:
+        type: string
+        default: HIGH,CRITICAL
+
+permissions: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and save the image
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
+        run: |
+          docker build -f "$DOCKERFILE" -t container-scan:local "$CONTEXT"
+          docker save container-scan:local -o .container-scan.tar
+
+      - uses: $/actions/trivy
+        with:
+          input: .container-scan.tar
+          severity: ${{ inputs.severity }}
