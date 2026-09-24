@@ -159,6 +159,7 @@ class Renderer:
         jobs = []
         if stack == "python":
             jobs.append(f"""  python:
+    name: Python
     uses: {self.uses("python-ci")}
     permissions:
       contents: read
@@ -166,10 +167,11 @@ class Renderer:
     #   commands: |
     #     extra checks that run before the tests""")
         jobs.append(f"""  lint:
+    name: Lint
     uses: {self.uses("lint")}
     permissions:
       contents: read""")
-        return f"""name: ci
+        return f"""name: CI
 
 on:
   push:
@@ -192,10 +194,12 @@ jobs:
     with:
       pip-audit-files: {" ".join(requirement_files)}""" if requirement_files else ""
         jobs = [f"""  security:
+    name: Security
     uses: {self.uses("security")}
     permissions:
       contents: read{audit}""",
                 f"""  codeql:
+    name: CodeQL
     uses: {self.uses("codeql")}
     permissions:
       actions: read
@@ -204,21 +208,24 @@ jobs:
     with:
       languages: '{languages}'""",
                 f"""  dependency-review:
+    name: Dependency Review
     if: github.event_name == 'pull_request'
     uses: {self.uses("dependency-review")}
     permissions:
       contents: read"""]
         for index, dockerfile in enumerate(images):
             suffix = "" if len(images) == 1 else f"-{index + 1}"
+            title = "" if len(images) == 1 else f" ({dockerfile})"
             context = str(Path(dockerfile).parent)
             jobs.append(f"""  container-scan{suffix}:
+    name: Container Scan{title}
     uses: {self.uses("container-scan")}
     permissions:
       contents: read
     with:
       dockerfile: {dockerfile}
       context: {context}""")
-        return f"""name: security
+        return f"""name: Security
 
 on:
   push:
@@ -239,7 +246,7 @@ jobs:
 """
 
     def prepare_release(self, version_file):
-        return f"""name: prepare release
+        return f"""name: Prepare Release
 
 # Bumps the version and opens a PR. Merging it lets release.yml tag and publish.
 on:
@@ -254,6 +261,7 @@ permissions: {{}}
 
 jobs:
   prepare:
+    name: Prepare
     uses: {self.uses("prepare-release")}
     permissions:
       contents: write
@@ -265,7 +273,7 @@ jobs:
 
     def release(self, stack, version_file):
         check = "python-ci" if stack == "python" else "lint"
-        return f"""name: release
+        return f"""name: Release
 
 # Tags and publishes the version in {version_file} once, after the checks pass.
 # Pushes that don't change the version find the tag already there and do nothing.
@@ -277,11 +285,13 @@ permissions: {{}}
 
 jobs:
   check:
+    name: Check
     uses: {self.uses(check)}
     permissions:
       contents: read
 
   release:
+    name: Release
     needs: check
     uses: {self.uses("release")}
     permissions:

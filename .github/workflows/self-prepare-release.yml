@@ -1,4 +1,4 @@
-name: self prepare release
+name: Self Prepare Release
 
 # Bumps VERSION and opens a PR. Merging it lets self-release.yml tag and publish.
 on:
@@ -13,6 +13,7 @@ permissions: {}
 
 jobs:
   prepare:
+    name: Prepare
     uses: $/.github/workflows/prepare-release.yml
     permissions:
       contents: write

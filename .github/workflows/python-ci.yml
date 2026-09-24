@@ -1,4 +1,4 @@
-name: python ci
+name: Python CI
 
 # Installs the project (from its hash-locked dev requirements when present),
 # lints it with ruff, runs any extra commands, then the tests, which fail
@@ -43,6 +43,7 @@ permissions: {}
 
 jobs:
   test:
+    name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

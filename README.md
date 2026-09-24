@@ -99,9 +99,9 @@ their hashes. `init_repo.py` sets that for repos with hash-locked files.
 The version file is the only place a version is written: `pyproject.toml`, `package.json`,
 `CMakeLists.txt` (`project(... VERSION x.y.z)`), or a plain `VERSION` file.
 
-1. **Actions → prepare release → Run workflow:** enter `patch`, `minor`, `major` or `x.y.z`. It
+1. **Actions → Prepare Release → Run workflow:** enter `patch`, `minor`, `major` or `x.y.z`. It
    bumps the version file on a `release/vX.Y.Z` branch and opens a PR.
-2. **Merge the PR:** `release` sees an untagged version, tags the merge commit and publishes a
+2. **Merge the PR:** Release sees an untagged version, tags the merge commit and publishes a
    GitHub Release with generated notes.
 
 Pushes that don't change the version do nothing.

@@ -1,4 +1,4 @@
-name: prepare release
+name: Prepare Release
 
 # Stage one of a release: bump the version file on a release/vX.Y.Z branch and
 # open a pull request. Merging it lets release.yml tag and publish.
@@ -24,6 +24,7 @@ permissions: {}
 
 jobs:
   prepare:
+    name: Prepare
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

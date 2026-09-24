@@ -1,4 +1,4 @@
-name: dependency review
+name: Dependency Review
 
 # Fails a pull request that adds a dependency with a known vulnerability.
 on:
@@ -12,6 +12,7 @@ permissions: {}
 
 jobs:
   review:
+    name: Review
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -285,3 +285,20 @@ def test_repin_without_pins(tmp_path, capsys):
     assert init_repo.main([str(repo), "--repin", "--ref", "HEAD"]) == 0
     assert "No library pins found" in capsys.readouterr().out
     assert init_repo.main([str(repo), "--repin", "--ref", "no-such-ref"]) == 1
+
+
+def test_workflow_and_job_names_are_capitalized(tmp_path):
+    repo = make_repo(tmp_path, {**PYTHON, "other/Dockerfile": "FROM scratch\n"})
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    names = {}
+    for name, text in outputs.items():
+        if name.startswith(".github/workflows/"):
+            workflow = yaml.safe_load(text)
+            names[workflow["name"]] = sorted(job["name"] for job in workflow["jobs"].values())
+    assert names == {
+        "CI": ["Lint", "Python"],
+        "Security": ["CodeQL", "Container Scan (docker/Dockerfile)", "Container Scan (other/Dockerfile)",
+                     "Dependency Review", "Security"],
+        "Prepare Release": ["Prepare"],
+        "Release": ["Check", "Release"],
+    }

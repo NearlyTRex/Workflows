@@ -1,4 +1,4 @@
-name: self release
+name: Self Release
 
 on:
   push:
@@ -8,11 +8,13 @@ permissions: {}
 
 jobs:
   check:
+    name: Check
     uses: $/.github/workflows/lint.yml
     permissions:
       contents: read
 
   release:
+    name: Release
     needs: check
     uses: $/.github/workflows/release.yml
     permissions:

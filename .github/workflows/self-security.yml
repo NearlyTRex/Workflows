@@ -1,4 +1,4 @@
-name: self security
+name: Self Security
 
 on:
   push:
@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   security:
+    name: Security
     uses: $/.github/workflows/security.yml
     permissions:
       contents: read
@@ -25,6 +26,7 @@ jobs:
         tests/fixtures/python-app/requirements.txt tests/fixtures/python-app/requirements-dev.txt
 
   codeql:
+    name: CodeQL
     uses: $/.github/workflows/codeql.yml
     permissions:
       actions: read
@@ -34,12 +36,14 @@ jobs:
       languages: '["python", "actions"]'
 
   dependency-review:
+    name: Dependency Review
     if: github.event_name == 'pull_request'
     uses: $/.github/workflows/dependency-review.yml
     permissions:
       contents: read
 
   container-scan:
+    name: Container Scan
     uses: $/.github/workflows/container-scan.yml
     permissions:
       contents: read

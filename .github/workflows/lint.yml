@@ -1,4 +1,4 @@
-name: lint
+name: Lint
 
 # Language-agnostic checks: shellcheck on tracked shell scripts, and every
 # tracked JSON file must parse. Each is skipped when there is nothing to check.
@@ -16,6 +16,7 @@ permissions: {}
 
 jobs:
   lint:
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

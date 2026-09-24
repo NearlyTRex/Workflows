@@ -1,4 +1,4 @@
-name: release
+name: Release
 
 # Stage two of a release: when the version in the version file has no tag yet,
 # tag this commit and publish a GitHub Release with generated notes. Anything
@@ -38,6 +38,7 @@ concurrency:
 
 jobs:
   release:
+    name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
