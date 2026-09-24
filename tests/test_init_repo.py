@@ -38,7 +38,7 @@ def all_uses(workflow):
 PYTHON = {
     "pyproject.toml": '[project]\nname = "x"\nversion = "1.0.0"\n',
     "x/__init__.py": "",
-    "requirements.lock": "a==1 \\\n    --hash=sha256:00\n",
+    "requirements.txt": "a==1 \\\n    --hash=sha256:00\n",
     "docker/Dockerfile": "FROM scratch\n",
 }
 
@@ -51,7 +51,7 @@ def test_python_repo(tmp_path):
     assert set(ci["jobs"]) == {"python", "lint"}
     security = load(repo, ".github/workflows/security.yml")
     assert set(security["jobs"]) == {"security", "codeql", "dependency-review", "container-scan"}
-    assert security["jobs"]["security"]["with"]["pip-audit-files"] == "requirements.lock"
+    assert security["jobs"]["security"]["with"]["pip-audit-files"] == "requirements.txt"
     assert security["jobs"]["codeql"]["with"]["languages"] == '["python", "actions"]'
     assert security["jobs"]["container-scan"]["with"] == {"dockerfile": "docker/Dockerfile", "context": "docker"}
 
@@ -89,7 +89,7 @@ def test_every_library_reference_is_pinned_with_a_label(tmp_path):
 ])
 def test_stack_detection(tmp_path, files, stack, languages, release_file):
     repo = make_repo(tmp_path, files)
-    target, detected, version_file, outputs = init_repo.plan(repo, ref="HEAD")
+    target, detected, version_file, outputs, _ = init_repo.plan(repo, ref="HEAD")
     assert detected == stack
     assert version_file == release_file
     security = yaml.safe_load(outputs[".github/workflows/security.yml"])
@@ -100,14 +100,14 @@ def test_stack_detection(tmp_path, files, stack, languages, release_file):
 
 def test_release_checks_run_lint_outside_python(tmp_path):
     repo = make_repo(tmp_path, {"build.sh": "", "VERSION": "1.0.0\n"})
-    _, _, _, outputs = init_repo.plan(repo, ref="HEAD")
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
     release = yaml.safe_load(outputs[".github/workflows/release.yml"])
     assert "/lint.yml@" in release["jobs"]["check"]["uses"]
 
 
 def test_submodules_and_npm_get_dependabot(tmp_path):
     repo = make_repo(tmp_path, {".gitmodules": "", "package.json": '{"version": "1.0.0"}', "a.sh": ""})
-    _, _, _, outputs = init_repo.plan(repo, ref="HEAD")
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
     ecosystems = {u["package-ecosystem"] for u in yaml.safe_load(outputs[".github/dependabot.yml"])["updates"]}
     assert ecosystems == {"github-actions", "npm", "gitsubmodule"}
 
@@ -133,9 +133,9 @@ def test_dry_run_writes_nothing(tmp_path):
 
 def test_no_release_and_explicit_version_file(tmp_path):
     repo = make_repo(tmp_path, {**PYTHON, "VERSION": "3.0.0\n"})
-    _, _, _, outputs = init_repo.plan(repo, release=False, ref="HEAD")
+    _, _, _, outputs, _ = init_repo.plan(repo, release=False, ref="HEAD")
     assert ".github/workflows/release.yml" not in outputs
-    _, _, version_file, _ = init_repo.plan(repo, version_file="VERSION", ref="HEAD")
+    _, _, version_file, _, _ = init_repo.plan(repo, version_file="VERSION", ref="HEAD")
     assert version_file == "VERSION"
 
 
@@ -147,3 +147,100 @@ def test_bad_version_file_is_an_error(tmp_path):
 def test_unknown_ref_is_an_error(tmp_path):
     repo = make_repo(tmp_path, PYTHON)
     assert init_repo.main([str(repo), "--ref", "no-such-ref"]) == 1
+
+
+def test_locked_python_repos_only_update_lock_files(tmp_path):
+    repo = make_repo(tmp_path, PYTHON)
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    pip = [u for u in yaml.safe_load(outputs[".github/dependabot.yml"])["updates"] if u["package-ecosystem"] == "pip"]
+    assert pip[0]["versioning-strategy"] == "lockfile-only"
+
+    unlocked = make_repo(tmp_path / "unlocked", {"pyproject.toml": '[project]\nname = "x"\nversion = "1.0.0"\n'})
+    _, _, _, outputs, _ = init_repo.plan(unlocked, ref="HEAD")
+    pip = [u for u in yaml.safe_load(outputs[".github/dependabot.yml"])["updates"] if u["package-ecosystem"] == "pip"]
+    assert "versioning-strategy" not in pip[0]
+
+
+def test_prints_required_repo_settings(tmp_path, capsys):
+    repo = make_repo(tmp_path, PYTHON)
+    init_repo.main([str(repo), "--ref", "HEAD"])
+    out = capsys.readouterr().out
+    assert "Dependency graph" in out and "create and approve pull requests" in out
+
+
+def test_warns_about_locks_dependabot_cannot_update(tmp_path, capsys):
+    header = "#\n# by the following command:\n#\n#    pip-compile --generate-hashes --output-file={} {}\n#\n"
+    body = "a==1 \\\n    --hash=sha256:00\n"
+    repo = make_repo(tmp_path, {
+        **PYTHON,
+        "requirements.txt": header.format("requirements.txt", "pyproject.toml") + body,
+        "requirements-dev.txt": header.format("requirements-dev.txt", "requirements-dev.in") + body,
+        "tools.lock": header.format("tools.lock", "tools.in") + body,
+    })
+    _, _, _, _, warnings = init_repo.plan(repo, ref="HEAD")
+    assert len(warnings) == 2
+    assert warnings[0].startswith("requirements.txt: compiled from pyproject.toml")
+    assert warnings[1].startswith("tools.lock: Dependabot never updates *.lock files")
+    init_repo.main([str(repo), "--ref", "HEAD"])
+    assert "warning: tools.lock" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://github.com/Someone/Lib.git", "Someone/Lib"),
+    ("git@github.com:Someone/Lib.git", "Someone/Lib"),
+    ("https://gitlab.com/Someone/Lib.git", init_repo.DEFAULT_LIBRARY),
+])
+def test_library_name(monkeypatch, url, expected):
+    monkeypatch.setattr(init_repo, "git", lambda repo, *args: url)
+    assert init_repo.library_name() == expected
+
+
+def test_library_name_without_remote(monkeypatch):
+    def fail(repo, *args):
+        raise init_repo.InitError("no remote")
+    monkeypatch.setattr(init_repo, "git", fail)
+    assert init_repo.library_name() == init_repo.DEFAULT_LIBRARY
+
+
+def test_latest_tag_is_the_default_ref(monkeypatch):
+    answers = {"describe": "v1.2.0", "rev-list": "a" * 40}
+    monkeypatch.setattr(init_repo, "git", lambda repo, *args: answers[args[0]])
+    assert init_repo.resolve_ref(None) == ("a" * 40, "v1.2.0")
+
+
+def test_untagged_library_needs_a_ref(monkeypatch):
+    def git(repo, *args):
+        if args[0] == "describe":
+            raise init_repo.InitError("no tags")
+        return "a" * 40
+    monkeypatch.setattr(init_repo, "git", git)
+    with pytest.raises(init_repo.InitError, match="no release tag yet"):
+        init_repo.resolve_ref(None)
+
+
+def test_works_outside_git(tmp_path):
+    repo = tmp_path / "plain"
+    (repo / "x").mkdir(parents=True)
+    (repo / "x" / "a.cpp").write_text("")
+    (repo / "VERSION").write_text("1.0.0\n")
+    _, stack, version_file, _, _ = init_repo.plan(repo, ref="HEAD")
+    assert (stack, version_file) == ("cpp", "VERSION")
+
+
+def test_unreadable_candidate_version_file_is_skipped(tmp_path):
+    repo = make_repo(tmp_path, {"pyproject.toml": '[project]\nname = "x"\ndynamic = ["version"]\n',
+                                "VERSION": "2.0.0\n"})
+    _, _, version_file, _, _ = init_repo.plan(repo, ref="HEAD")
+    assert version_file == "VERSION"
+
+
+def test_target_must_be_a_directory(tmp_path):
+    assert init_repo.main([str(tmp_path / "missing"), "--ref", "HEAD"]) == 1
+
+
+def test_settings_without_release(tmp_path, capsys):
+    repo = make_repo(tmp_path, {"a.sh": ""})
+    assert init_repo.main([str(repo), "--ref", "HEAD"]) == 0
+    out = capsys.readouterr().out
+    assert "no release workflows" in out and "Dependency graph" in out
+    assert "create and approve pull requests" not in out

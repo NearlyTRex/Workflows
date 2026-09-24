@@ -105,6 +105,25 @@ def hashed_requirement_files(target, files):
     return sorted(found)
 
 
+def lock_warnings(target, requirement_files):
+    """Hash-locked files Dependabot can't regenerate.
+
+    It only maintains pip-compile output compiled from a .in file and named after it
+    (requirements.in -> requirements.txt). A lock compiled from pyproject.toml, or named
+    *.lock, gets its pyproject.toml or .in ranges bumped while the lock itself goes stale.
+    """
+    warnings = []
+    for name in requirement_files:
+        header = (target / name).read_text(errors="ignore")[:2000]
+        if name.endswith(".lock"):
+            warnings.append(f"{name}: Dependabot never updates *.lock files; pip-compile it to a "
+                            "requirements*.txt named after its .in file instead")
+        elif re.search(r"#\s+pip-compile .*\bpyproject\.toml\s*$", header, re.M):
+            warnings.append(f"{name}: compiled from pyproject.toml, which Dependabot can't regenerate; "
+                            "compile it from a requirements .in file instead")
+    return warnings
+
+
 def dockerfiles(files):
     return sorted(f for f in files if Path(f).name == "Dockerfile")
 
@@ -115,7 +134,8 @@ def directory_of(path):
 
 
 class Renderer:
-    def __init__(self, library, sha, label):
+    def __init__(self, library, sha, label, target):
+        self.target = target
         self.library = library
         self.sha = sha
         self.label = label
@@ -263,6 +283,7 @@ jobs:
         updates = [("github-actions", ["/"], "actions")]
         if stack == "python" or any(n.endswith(".lock") or n.startswith("requirements") for n in names):
             updates.append(("pip", ["/"], "python"))
+        locked = bool(hashed_requirement_files(self.target, files))
         if "package.json" in names:
             updates.append(("npm", ["/"], "npm"))
         if images:
@@ -272,8 +293,10 @@ jobs:
         blocks = []
         for ecosystem, directories, group in updates:
             dirs = ", ".join(f'"{d}"' for d in directories)
+            # With hash-locked files, only the locks should move, not the ranges in pyproject.toml.
+            strategy = "\n    versioning-strategy: lockfile-only" if ecosystem == "pip" and locked else ""
             blocks.append(f"""  - package-ecosystem: {ecosystem}
-    directories: [{dirs}]
+    directories: [{dirs}]{strategy}
     schedule:
       interval: weekly
     cooldown:
@@ -301,7 +324,7 @@ def plan(target, stack=None, version_file=None, release=True, ref=None):
     if version_file is not None:
         version_tool.read(target / version_file)
     sha, label = resolve_ref(ref)
-    renderer = Renderer(library_name(), sha, label)
+    renderer = Renderer(library_name(), sha, label, target)
     images = dockerfiles(files)
     outputs = {
         ".github/workflows/ci.yml": renderer.ci(stack),
@@ -311,7 +334,8 @@ def plan(target, stack=None, version_file=None, release=True, ref=None):
     if release and version_file:
         outputs[".github/workflows/prepare-release.yml"] = renderer.prepare_release(version_file)
         outputs[".github/workflows/release.yml"] = renderer.release(stack, version_file)
-    return target, stack, version_file, outputs
+    warnings = lock_warnings(target, hashed_requirement_files(target, files))
+    return target, stack, version_file, outputs, warnings
 
 
 def main(argv=None):
@@ -326,7 +350,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        target, stack, version_file, outputs = plan(
+        target, stack, version_file, outputs, warnings = plan(
             args.target, args.stack, args.version_file, not args.no_release, args.ref)
     except (InitError, version_tool.VersionError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
@@ -349,6 +373,15 @@ def main(argv=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
         print(f"  wrote {name}")
+
+    for warning in warnings:
+        print(f"  warning: {warning}")
+
+    if not args.dry_run:
+        print("\nRepo settings these workflows need (Settings → Advanced Security, and Actions → General):")
+        print("  - Dependency graph and Dependabot alerts, for dependency review and Dependabot")
+        if version_file:
+            print("  - \"Allow GitHub Actions to create and approve pull requests\", for prepare-release")
 
     others = sorted(p.name for p in (target / ".github" / "workflows").glob("*.y*ml")
                     if f".github/workflows/{p.name}" not in outputs) \

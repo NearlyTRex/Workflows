@@ -1,0 +1,4 @@
+# Runtime dependencies; pyproject.toml reads this file. Regenerate the locks after editing:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.txt requirements.in
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements-dev.txt requirements-dev.in
+packaging

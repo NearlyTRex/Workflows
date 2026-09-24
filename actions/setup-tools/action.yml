@@ -17,7 +17,7 @@ runs:
       shell: bash
       env:
         PYTHON: ${{ steps.python.outputs.python-path }}
-        LOCK: ${{ github.action_path }}/requirements.lock
+        LOCK: ${{ github.action_path }}/requirements.txt
       run: |
         venv="$RUNNER_TEMP/workflow-tools"
         "$PYTHON" -m venv "$venv"

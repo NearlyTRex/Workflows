@@ -1,0 +1,9 @@
+[run]
+branch = True
+source =
+    actions
+    scripts
+
+[report]
+exclude_also =
+    if __name__ == .__main__.:

@@ -20,7 +20,9 @@ jobs:
     permissions:
       contents: read
     with:
-      pip-audit-files: requirements-dev.lock actions/setup-tools/requirements.lock tests/fixtures/python-app/requirements-dev.lock
+      pip-audit-files: >-
+        requirements-dev.txt actions/setup-tools/requirements.txt actions/coverage/requirements.txt
+        tests/fixtures/python-app/requirements.txt tests/fixtures/python-app/requirements-dev.txt
 
   codeql:
     uses: $/.github/workflows/codeql.yml

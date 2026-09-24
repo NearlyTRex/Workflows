@@ -14,8 +14,10 @@ updates:
       actions:
         patterns: ["*"]
 
+  # Only the hash-locked files move; ranges in pyproject.toml stay as written.
   - package-ecosystem: pip
-    directories: ["/", "/actions/setup-tools", "/tests/fixtures/python-app"]
+    directories: ["/", "/actions/setup-tools", "/actions/coverage", "/tests/fixtures/python-app"]
+    versioning-strategy: lockfile-only
     schedule:
       interval: weekly
     cooldown:

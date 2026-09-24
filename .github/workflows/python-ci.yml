@@ -1,7 +1,8 @@
 name: python ci
 
 # Installs the project (from its hash-locked dev requirements when present),
-# lints it with ruff, runs any extra commands, then the tests.
+# lints it with ruff, runs any extra commands, then the tests, which fail
+# below 100% coverage unless coverage-fail-under says otherwise.
 on:
   workflow_call:
     inputs:
@@ -14,7 +15,7 @@ on:
       lock-file:
         description: Hash-locked dev requirements. Without it the project installs with pip install -e ".[dev]".
         type: string
-        default: requirements-dev.lock
+        default: requirements-dev.txt
       ruff:
         type: boolean
         default: true
@@ -27,8 +28,16 @@ on:
         type: string
         default: ""
       test-command:
+        description: With coverage on, a Python module and its arguments (run as coverage run -m ...)
         type: string
         default: pytest -q
+      coverage:
+        description: Fail when test coverage is below coverage-fail-under
+        type: boolean
+        default: true
+      coverage-fail-under:
+        type: string
+        default: "100"
 
 permissions: {}
 
@@ -83,6 +92,15 @@ jobs:
         run: bash -euo pipefail -c "$COMMANDS"
 
       - name: Tests
+        if: '!inputs.coverage'
         env:
           TEST_COMMAND: ${{ inputs.test-command }}
         run: bash -euo pipefail -c "$TEST_COMMAND"
+
+      - name: Tests with coverage
+        if: inputs.coverage
+        uses: $/actions/coverage
+        with:
+          test-command: ${{ inputs.test-command }}
+          fail-under: ${{ inputs.coverage-fail-under }}
+          working-directory: ${{ inputs.working-directory }}

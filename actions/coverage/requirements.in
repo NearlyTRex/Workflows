@@ -1,0 +1,3 @@
+# coverage.py for python-ci's coverage gate. Regenerate requirements.txt after editing:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.txt requirements.in
+coverage

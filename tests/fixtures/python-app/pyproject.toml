@@ -2,13 +2,14 @@
 name = "fixture-app"
 version = "0.0.0"
 requires-python = ">=3.11"
-
-[project.optional-dependencies]
-dev = ["pytest"]
+dynamic = ["dependencies"]
 
 [build-system]
 requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.in"] }
 
 [tool.setuptools.packages.find]
 include = ["fixture_app*"]

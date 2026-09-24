@@ -37,7 +37,7 @@ All of them run with the least permission they need. The caller must grant at le
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.lock), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q) | `contents: read` |
+| `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100) | `contents: read` |
 | `lint.yml` | `shellcheck` (true), `json` (true) | `contents: read` |
 | `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files` | `contents: read` |
 | `codeql.yml` | `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
@@ -52,6 +52,14 @@ All of them run with the least permission they need. The caller must grant at le
   - **Ruff:** uses the repo's own `[tool.ruff]` or `ruff.toml` when present. Otherwise it checks
     `ruff-select`: syntax errors, undefined names, unused imports.
   - **Commands:** `commands` runs extra checks between install and tests.
+  - **Coverage:** the tests run under coverage.py and fail below `coverage-fail-under`, which
+    is 100 by default.
+    - **Without config:** the gate measures every Python file under the working directory, with
+      branch coverage, so a module no test imports still counts.
+    - **With config:** a repo's `.coveragerc` or `[tool.coverage]` replaces that, for example to
+      omit a generated file.
+    - **Test command:** with coverage on, `test-command` must be a Python module and its
+      arguments, like `pytest -q`.
 - **`lint`:** shellchecks every tracked `*.sh` and `*.bash` file, and checks that every tracked
   `*.json` file parses. Each check is skipped when there's nothing to check.
 - **`security`:**
@@ -62,6 +70,29 @@ All of them run with the least permission they need. The caller must grant at le
   - **pip-audit:** checks the listed hash-locked files.
 - **`container-scan`:** builds the image and fails on HIGH or CRITICAL vulnerabilities that have a
   fix available.
+
+### Python dependency locks
+
+Dependabot only regenerates a pip-compile lock that was compiled from a `.in` file and is named
+after it: `requirements.in` becomes `requirements.txt`, and `requirements-dev.in` becomes
+`requirements-dev.txt`.
+- **Other setups go stale:** a lock compiled from `pyproject.toml`, or named `*.lock`, never gets
+  updated. Dependabot bumps ranges in the source file instead.
+- **Warnings:** `init_repo.py` warns about both.
+
+The layout that keeps everything current:
+
+```text
+requirements.in        runtime dependencies; pyproject.toml reads them with
+                       dynamic = ["dependencies"] and
+                       [tool.setuptools.dynamic] dependencies = { file = ["requirements.in"] }
+requirements-dev.in    -r requirements.in, the test tools, and setuptools for the editable install
+requirements.txt       pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.txt requirements.in
+requirements-dev.txt   same, from requirements-dev.in
+```
+
+With `versioning-strategy: lockfile-only`, Dependabot's PRs change only the `.txt` files and keep
+their hashes. `init_repo.py` sets that for repos with hash-locked files.
 
 ### Releases
 
@@ -101,9 +132,21 @@ jobs:
       assets: dist-*
 ```
 
-Each repo needs one setting for stage one: Settings → Actions → General → "Allow GitHub Actions to
-create and approve pull requests". GitHub doesn't run workflows on a PR opened with the workflow
-token, so don't make checks required on release PRs.
+GitHub doesn't run workflows on a PR opened with the workflow token, so don't make checks required
+on release PRs.
+
+## Repo settings
+
+Each repo that uses these workflows needs:
+
+- **Dependency graph and Dependabot alerts** (Settings → Advanced Security). Dependency review
+  fails without them:
+  `gh api -X PUT repos/OWNER/REPO/vulnerability-alerts`
+- **"Allow GitHub Actions to create and approve pull requests"** (Settings → Actions → General),
+  for prepare-release:
+  `gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true`
+
+`init_repo.py` prints this list after writing the files.
 
 ## How it fits together
 
@@ -114,7 +157,8 @@ so one pin fixes the whole chain. The actions are:
 
 | Action | Purpose |
 |---|---|
-| `setup-tools` | zizmor, pip-audit, ruff and shellcheck from [`requirements.lock`](actions/setup-tools/requirements.lock), installed with hashes into a private venv |
+| `setup-tools` | zizmor, pip-audit, ruff and shellcheck from [`requirements.txt`](actions/setup-tools/requirements.txt), installed with hashes into a private venv |
+| `coverage` | Runs the tests under hash-locked coverage.py and enforces the threshold |
 | `version` | Reads or bumps the version; [`version.py`](actions/version/version.py) runs locally too |
 | `zizmor` | zizmor with [this config](actions/zizmor/zizmor.yml) |
 | `gitleaks`, `trivy` | Container actions. Their `Dockerfile` pins the image by digest |
@@ -126,9 +170,12 @@ them weekly, 7 days behind upstream.
 ## Working on this repo
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install --require-hashes --no-deps -r requirements-dev.lock
-.venv/bin/pytest -q
+python3 -m venv .venv && .venv/bin/pip install --require-hashes --no-deps -r requirements-dev.txt
+.venv/bin/pip install --require-hashes --no-deps -r actions/coverage/requirements.txt
+.venv/bin/python -m coverage run -m pytest -q && .venv/bin/python -m coverage report --fail-under=100
 ```
+
+This repo holds itself to the same 100% gate.
 
 `self-ci.yml` and `self-security.yml` run this repo's checks through its own reusable workflows.
 The Python fixture in `tests/fixtures/python-app` goes through `python-ci` and `container-scan`,
