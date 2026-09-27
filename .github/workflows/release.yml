@@ -104,7 +104,6 @@ jobs:
           CHECKSUMS: ${{ inputs.checksums }}
           NOTES_FILE: ${{ inputs.notes-file }}
         run: |
-          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" --silent
           args=(--repo "$REPO" --verify-tag --title "$TITLE $VERSION" --generate-notes)
           if [ "$DRAFT" = "true" ]; then args+=(--draft); fi
           # gh puts the given notes above the generated ones.
@@ -123,5 +122,16 @@ jobs:
               > "$RUNNER_TEMP/SHA256SUMS.txt"
             assets+=("$RUNNER_TEMP/SHA256SUMS.txt")
           fi
-          gh release create "$TAG" "${args[@]}" "${assets[@]}"
+          # All or nothing. The tag is what marks a version released, so a tag
+          # left behind by a failed publish would make every re-run skip it.
+          # Everything that can fail beforehand is done above; if publishing
+          # fails, the partial release and the tag go too, and a re-run starts
+          # clean.
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" --silent
+          if ! gh release create "$TAG" "${args[@]}" "${assets[@]}"; then
+            echo "::error::Publishing $TAG failed. Removed the tag and any partial release, so re-running this workflow retries it."
+            gh release delete "$TAG" --repo "$REPO" --yes 2>/dev/null || true
+            gh api -X DELETE "repos/$REPO/git/refs/tags/$TAG" --silent 2>/dev/null || true
+            exit 1
+          fi
           echo "released=true" >> "$GITHUB_OUTPUT"

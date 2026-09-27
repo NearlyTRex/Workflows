@@ -18,6 +18,13 @@ on:
         description: Seconds to wait for the stack to become healthy
         type: string
         default: "180"
+      wait:
+        description: >-
+          Wait for every service to be running, and healthy where it has a healthcheck. Turn
+          off for a stack with one-shot services (a migration or seed job that runs and exits),
+          which compose counts as failed, and use health-url instead.
+        type: boolean
+        default: true
       commands:
         description: Shell commands run against the running stack
         type: string
@@ -42,7 +49,13 @@ jobs:
       - name: Build and start
         env:
           TIMEOUT: ${{ inputs.timeout }}
-        run: docker compose up --detach --build --wait --wait-timeout "$TIMEOUT"
+          WAIT: ${{ inputs.wait }}
+        run: |
+          if [ "$WAIT" = "true" ]; then
+            docker compose up --detach --build --wait --wait-timeout "$TIMEOUT"
+          else
+            docker compose up --detach --build
+          fi
 
       - name: Wait for the health URL
         if: inputs.health-url != ''

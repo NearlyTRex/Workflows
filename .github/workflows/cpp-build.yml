@@ -142,7 +142,8 @@ jobs:
         shell: bash
         env:
           TAG: ${{ inputs.local-tag }}
-        run: git tag "$TAG" && git describe --tags --always
+        # -f: a re-run after a failed publish may already have the tag.
+        run: git tag -f "$TAG" && git describe --tags --always
 
       # Skipped off Linux, so a matrix can pass one package list to every runner.
       - name: Install packages
@@ -208,15 +209,16 @@ jobs:
 
       # Every run saves under a new key, and restores the newest earlier one by
       # prefix, so the cache follows the code instead of freezing at its first
-      # save. GitHub evicts the least recently used when the repo is full.
+      # save. GitHub evicts the least recently used when the repo is full. The @
+      # ends the name, so a cache named foo never restores one named foo-bar.
       - name: Restore ccache
         id: ccache
         if: inputs.ccache && runner.os == 'Linux'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
-          key: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-
+          key: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}@${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}@
 
       - name: Reset ccache statistics
         if: steps.ccache.outcome == 'success'
@@ -242,7 +244,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
-          key: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}@${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Test
         if: inputs.test-command != ''
