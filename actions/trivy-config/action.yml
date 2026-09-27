@@ -1,0 +1,25 @@
+name: Trivy config scan
+description: >-
+  Scans Dockerfiles and other infrastructure config (Kubernetes, Terraform,
+  Helm) for misconfigurations such as running as root. Reads .trivyignore from the
+  repository root, so a deliberate exception is recorded there with its reason.
+
+inputs:
+  path:
+    description: Directory or file to scan, relative to the workspace
+    required: true
+  severity:
+    description: Severities that fail the scan
+    required: false
+    default: HIGH,CRITICAL
+
+runs:
+  using: docker
+  image: Dockerfile
+  args:
+    - config
+    - --severity
+    - ${{ inputs.severity }}
+    - --exit-code
+    - "1"
+    - ${{ inputs.path }}

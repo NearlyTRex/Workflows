@@ -53,7 +53,8 @@ def test_python_repo(tmp_path):
     assert set(security["jobs"]) == {"security", "codeql", "dependency-review", "container-scan"}
     assert security["jobs"]["security"]["with"]["pip-audit-files"] == "requirements.txt"
     assert security["jobs"]["codeql"]["with"]["languages"] == '["python", "actions"]'
-    assert security["jobs"]["container-scan"]["with"] == {"dockerfile": "docker/Dockerfile", "context": "docker"}
+    assert security["jobs"]["container-scan"]["with"] == {
+        "dockerfile": "docker/Dockerfile", "context": "docker", "config-scan": True}
 
     release = load(repo, ".github/workflows/release.yml")
     assert release["jobs"]["release"]["needs"] == "check"
@@ -110,6 +111,16 @@ def test_submodules_and_npm_get_dependabot(tmp_path):
     _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
     ecosystems = {u["package-ecosystem"] for u in yaml.safe_load(outputs[".github/dependabot.yml"])["updates"]}
     assert ecosystems == {"github-actions", "npm", "gitsubmodule"}
+
+
+def test_compose_images_get_dependabot(tmp_path):
+    repo = make_repo(tmp_path, {**PYTHON, "docker/docker-compose.yml": "services: {}\n",
+                                "compose.yaml": "services: {}\n"})
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    ecosystems = {u["package-ecosystem"]: u["directories"]
+                  for u in yaml.safe_load(outputs[".github/dependabot.yml"])["updates"]}
+    assert ecosystems["docker-compose"] == ["/", "/docker"]
+    assert ecosystems["docker"] == ["/docker"]
 
 
 def test_existing_files_are_kept(tmp_path, capsys):

@@ -20,7 +20,7 @@ It detects the stack (`python`, `cpp`, `shell` or `data`) and the version file, 
 | `workflows/security.yml` | `security`, `codeql`, `dependency-review` (PRs) and a `container-scan` per Dockerfile. It also runs weekly |
 | `workflows/prepare-release.yml` | Stage one of a release. Only written when a version file is found |
 | `workflows/release.yml` | Stage two: checks, then tag and publish |
-| `dependabot.yml` | Actions, plus pip, docker, npm and git submodules when the repo has them |
+| `dependabot.yml` | Actions, plus pip, docker, docker-compose, npm and git submodules when the repo has them |
 
 Every call is pinned to the commit of this library's latest release, with the tag as a comment:
 
@@ -43,7 +43,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files` | `contents: read` |
 | `codeql.yml` | `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
 | `dependency-review.yml` | `fail-on-severity` (moderate) | `contents: read` |
-| `container-scan.yml` | `dockerfile` (Dockerfile), `context` (.), `severity` (HIGH,CRITICAL) | `contents: read` |
+| `container-scan.yml` | `dockerfile` (Dockerfile), `context` (.), `severity` (HIGH,CRITICAL), `config-scan` (false) | `contents: read` |
 | `prepare-release.yml` | `bump`, `version-file`, `tag-prefix` (v) | `contents: write`, `pull-requests: write` |
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets` | `contents: write` |
 
@@ -61,6 +61,7 @@ All of them run with the least permission they need. The caller must grant at le
       omit a generated file.
     - **Test command:** with coverage on, `test-command` must be a Python module and its
       arguments, like `pytest -q`.
+    - **Run page:** the coverage table, with missing lines, is also written to the job summary.
 - **`lint`:** shellchecks every tracked `*.sh` and `*.bash` file, checks that every tracked
   `*.json` file parses, and lints Markdown with [rumdl](https://github.com/rvben/rumdl), which
   implements the markdownlint rules. Each check is skipped when there's nothing to check.
@@ -78,6 +79,10 @@ All of them run with the least permission they need. The caller must grant at le
   - **pip-audit:** checks the listed hash-locked files.
 - **`container-scan`:** builds the image and fails on HIGH or CRITICAL vulnerabilities that have a
   fix available.
+  - **`config-scan`:** also fails on misconfigurations in the Dockerfile's directory, such as a
+    container that runs as root. A deliberate exception goes in the repo's `.trivyignore`, with a
+    comment saying why. Off by default so existing callers don't go red on a library bump;
+    `init_repo.py` turns it on for new repos.
 
 ### Python dependency locks
 
@@ -173,7 +178,7 @@ so one pin fixes the whole chain. The actions are:
 | `coverage` | Runs the tests under hash-locked coverage.py and enforces the threshold |
 | `version` | Reads or bumps the version; [`version.py`](actions/version/version.py) runs locally too |
 | `zizmor` | zizmor with [this config](actions/zizmor/zizmor.yml) |
-| `gitleaks`, `trivy` | Container actions. Their `Dockerfile` pins the image by digest |
+| `gitleaks`, `trivy`, `trivy-config` | Container actions. Their `Dockerfile` pins the image by digest |
 | `check-json` | Parses every tracked JSON file |
 | `check-markdown-fences` | Fails on Markdown code fences that don't close, which hide text from the lint rules |
 
