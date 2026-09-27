@@ -51,7 +51,8 @@ def test_fences_in_list_items_and_quotes_are_followed():
 
 
 def test_inline_triple_backticks_do_not_open_a_block():
-    assert find_problems("Use ```code``` inline.\n\nMore text.\n") == []
+    # Only a line that starts with the backticks could be taken for a fence
+    assert find_problems("```code``` starts this line.\n\nMore text.\n") == []
 
 
 def test_one_mistake_is_reported_once():
@@ -75,3 +76,21 @@ def test_tracked_files_are_checked_and_ignores_respected(tmp_path, monkeypatch, 
     assert "::error file=docs/bad.md,line=1::code block is never closed" in out
     assert "vendor/theirs.md" not in out and "untracked.md" not in out
     assert "2 Markdown files checked, 1 fence problems" in out
+
+
+def test_a_repo_without_an_ignore_file_checks_everything(tmp_path, monkeypatch, capsys):
+    repo_with(tmp_path, {"a.md": "```\nfine\n```\n", "vendor/b.md": "```\nopen\n"})
+    monkeypatch.chdir(tmp_path)
+
+    assert check_markdown_fences.main() == 1
+    assert "::error file=vendor/b.md,line=1::" in capsys.readouterr().out
+
+
+def test_file_patterns_in_the_ignore_file_match_paths_and_names():
+    patterns = ["/CHANGELOG.md", "*.draft.md", "vendor/"]
+
+    assert check_markdown_fences.is_ignored("CHANGELOG.md", patterns)
+    assert check_markdown_fences.is_ignored("docs/plan.draft.md", patterns)
+    assert check_markdown_fences.is_ignored("vendor/x.md", patterns)
+    assert not check_markdown_fences.is_ignored("docs/guide.md", patterns)
+    assert not check_markdown_fences.is_ignored("vendors.md", patterns)
