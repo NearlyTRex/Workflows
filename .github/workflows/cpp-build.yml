@@ -201,16 +201,18 @@ jobs:
           BUILD_COMMAND: ${{ inputs.build-command }}
         run: bash -euo pipefail -c "$BUILD_COMMAND"
 
-      # Also after a failed build: whatever did compile is still worth keeping.
-      # Verbose, so uncacheable calls are broken down by reason, such as
-      # "could not use precompiled header".
+      # Verbose, so uncacheable calls are broken down by reason, such as "could
+      # not use precompiled header"; it also warns when ccache-max-size is too
+      # small for the build.
       - name: ccache statistics
         if: always() && steps.ccache.outcome == 'success'
-        shell: bash
-        run: ccache --show-stats --verbose
+        uses: $/actions/ccache-stats
 
+      # Also after a failed build: whatever did compile is still worth keeping.
+      # Not after a cancelled one, which usually stopped early: its small cache
+      # would be the newest, and the next run would restore it over a full one.
       - name: Save ccache
-        if: always() && steps.ccache.outcome == 'success'
+        if: '!cancelled() && steps.ccache.outcome == ''success'''
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
