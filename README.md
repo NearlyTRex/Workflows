@@ -155,7 +155,12 @@ All of them run with the least permission they need. The caller must grant at le
   it, CMake's through its launcher setting and any other build system's through ccache's
   wrappers first on `PATH`, so a build only recompiles what changed since the last run. Each run
   saves its ccache under a new key and the next restores the newest one, so the cache follows the
-  code, and the hit rate is printed after the build.
+  code, and the hit rate is printed after the build. A cancelled run saves nothing, since it
+  usually stopped early and its small cache would otherwise be the one the next run restores.
+
+  When a build fills `ccache-max-size`, ccache evicts entries as it goes and the saved cache
+  holds only the end of the build, so the next run misses on the rest. The stats step then
+  warns, with the size to raise.
 
   By default ccache refuses compiles that use a precompiled header, so `ccache-sloppiness`
   defaults to `pch_defines,time_macros,include_file_mtime,include_file_ctime`, which accepts
@@ -311,6 +316,7 @@ so one pin fixes the whole chain. The actions are:
 | `publish-release` | Tags and publishes a release all or nothing, or prints what it would do (`dry-run`) |
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
 | `build-env` | Parallel jobs and ccache for `cpp-build` |
+| `ccache-stats` | Prints ccache's statistics and warns when `ccache-max-size` was too small |
 | `check-json`, `check-toml` | Parse every tracked JSON or TOML file |
 | `psscriptanalyzer` | PSScriptAnalyzer over tracked PowerShell, errors only unless the repo has settings |
 | `clang-format` | Checks C and C++ formatting when the repo has a `.clang-format`, with its own hash-locked clang-format |
@@ -339,10 +345,29 @@ sign. The library releases itself from `VERSION` through `self-prepare-release.y
 `self-release.yml`, which runs all of `self-ci.yml` before it publishes: every repo pinned here is
 offered the release.
 
+### Canary runs before a release
+
+The fixtures are small; a real repo's size (a long history to scan, thousands of files to
+compile) is where some problems show. Before merging a release PR, run real repos against the
+unreleased commit:
+
+```bash
+python3 scripts/canary.py dev/some-change SomeRepo OtherRepo   # names next to this repo, or paths
+python3 scripts/canary.py --cleanup SomeRepo OtherRepo          # afterwards
+```
+
+For each repo it pushes a `workflows-canary/<sha>` branch off the default branch with every
+library pin moved to that commit, and opens a draft PR, so CI and Security run as they would on a
+real change. When `security.yml` can be run by hand it starts that too, which scans the whole
+history like the weekly run. It then waits for every run and lists how each ended, failing if any
+did. It uses your `gh` login and never touches the repos' checkouts: the branch is made in a
+temporary worktree. The commit must be pushed first, and release workflows don't run, since they
+only run on the default branch.
+
 Logic lives in scripts under `actions/`, called from the workflows, rather than inline in YAML,
 so it has tests: Python under the 100% gate, and `build_env.sh`, which also runs on Windows
-runners, and `analyze.ps1` through pytest. The PowerShell tests are skipped on a machine without
-`pwsh`, but always run in CI.
+runners, `ccache_stats.sh` and `analyze.ps1` through pytest. The PowerShell tests are skipped on
+a machine without `pwsh`, but always run in CI.
 
 Dependabot has no Chocolatey ecosystem, so `self-tool-versions.yml` checks the Inno Setup version
 `inno-setup.yml` installs every week, and fails with the version to move to when a newer one is

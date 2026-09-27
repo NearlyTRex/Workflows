@@ -1,0 +1,14 @@
+name: ccache statistics
+description: >-
+  Prints ccache's statistics for the build, broken down by why a call couldn't
+  be cached, and warns when the cache ran out of room during the build: ccache
+  then evicted entries as it went, so the next run recompiles them. See
+  ccache_stats.sh.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/ccache_stats.sh
+      run: bash "$SCRIPT"
