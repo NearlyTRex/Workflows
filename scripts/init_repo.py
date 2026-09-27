@@ -335,19 +335,28 @@ updates:
 """
 
 
-def repin(target, ref=None):
-    """Point every library reference in target's workflows at ref. Returns the changed files."""
+def repin(target, ref=None, dry_run=False):
+    """Point every library reference in target's workflows at ref.
+
+    Returns the files that change, the files already pinned there, and the ref's label.
+    With dry_run nothing is written.
+    """
     target = Path(target).resolve()
     sha, label = resolve_ref(ref)
     pattern = re.compile(rf"({re.escape(library_name())}/\.github/workflows/[\w.-]+\.ya?ml)@[0-9a-f]{{40}}(?: # \S+)?")
-    changed = []
+    changed, current = [], []
     for path in sorted((target / ".github" / "workflows").glob("*.y*ml")):
         text = path.read_text()
+        if not pattern.search(text):
+            continue
         updated = pattern.sub(lambda m: f"{m.group(1)}@{sha} # {label}", text)
-        if updated != text:
+        if updated == text:
+            current.append(path.name)
+            continue
+        if not dry_run:
             path.write_text(updated)
-            changed.append(path.name)
-    return changed, label
+        changed.append(path.name)
+    return changed, current, label
 
 
 def plan(target, stack=None, version_file=None, release=True, ref=None):
@@ -389,11 +398,16 @@ def main(argv=None):
 
     if args.repin:
         try:
-            changed, label = repin(args.target, args.ref)
+            changed, current, label = repin(args.target, args.ref, args.dry_run)
         except InitError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
-        print(f"Pinned to {label}: {', '.join(changed)}" if changed else "No library pins found to move")
+        if changed:
+            print(f"{'Would pin' if args.dry_run else 'Pinned'} to {label}: {', '.join(changed)}")
+        if current:
+            print(f"Already pinned to {label}: {', '.join(current)}")
+        if not changed and not current:
+            print("No library pins found to move")
         return 0
 
     try:
