@@ -1,0 +1,14 @@
+name: Check Markdown fences
+description: >-
+  Fails when a tracked *.md file has a code fence that doesn't close where it
+  appears to (text after a closing fence) or a code block that never closes.
+  Either hides the rest of the file from the markdownlint rules, which skip code.
+  Files excluded by .markdownlintignore are skipped.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/check_markdown_fences.py
+      run: python3 "$SCRIPT"

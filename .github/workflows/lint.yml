@@ -2,8 +2,8 @@ name: Lint
 
 # Language-agnostic checks: shellcheck on tracked shell scripts, markdownlint
 # rules on Markdown (rumdl, using the repo's .markdownlint.* or rumdl config when
-# it has one), and every tracked JSON file must parse. Each is skipped when there
-# is nothing to check.
+# it has one) plus a check that every code fence closes, and every tracked JSON
+# file must parse. Each is skipped when there is nothing to check.
 on:
   workflow_call:
     inputs:
@@ -43,6 +43,10 @@ jobs:
       - name: Markdown
         if: inputs.markdown
         run: '"$RUNNER_TEMP/workflow-tools/bin/rumdl" check --output-format github .'
+
+      - name: Markdown fences
+        if: inputs.markdown
+        uses: $/actions/check-markdown-fences
 
       - name: JSON
         if: inputs.json

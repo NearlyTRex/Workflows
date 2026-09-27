@@ -64,6 +64,9 @@ All of them run with the least permission they need. The caller must grant at le
 - **`lint`:** shellchecks every tracked `*.sh` and `*.bash` file, checks that every tracked
   `*.json` file parses, and lints Markdown with [rumdl](https://github.com/rvben/rumdl), which
   implements the markdownlint rules. Each check is skipped when there's nothing to check.
+  - **Markdown fences:** `markdown` also fails on a code fence with text after it, or a code
+    block that never closes. Under CommonMark neither ends the block, so the prose after it is
+    read as code and the markdownlint rules, which skip code, never see it.
   - **Markdown config:** rumdl reads the repo's `.markdownlint.json`/`.yaml`, `.rumdl.toml` or
     `[tool.rumdl]` in `pyproject.toml`, so a repo sets line length and exclusions there. Without
     one it uses the markdownlint defaults, including 80-column lines. Gitignored files are skipped.
@@ -172,6 +175,7 @@ so one pin fixes the whole chain. The actions are:
 | `zizmor` | zizmor with [this config](actions/zizmor/zizmor.yml) |
 | `gitleaks`, `trivy` | Container actions. Their `Dockerfile` pins the image by digest |
 | `check-json` | Parses every tracked JSON file |
+| `check-markdown-fences` | Fails on Markdown code fences that don't close, which hide text from the lint rules |
 
 Every third-party action, tool and image is pinned by hash or digest. Dependabot updates all of
 them weekly, 7 days behind upstream.
