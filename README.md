@@ -47,7 +47,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `prepare-release.yml` | `bump`, `version-file`, `tag-prefix` (v) | `contents: write`, `pull-requests: write` |
 | `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file` | `contents: write` |
-| `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `commands` | `contents: read` |
+| `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
 | `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
@@ -98,6 +98,9 @@ All of them run with the least permission they need. The caller must grant at le
 - **`compose-test`:** builds and starts a Compose stack, waits for every service with a
   healthcheck to report healthy (and for `health-url`, when given), then runs `commands` against
   it. Logs are printed on failure and the stack is always removed, volumes included.
+  - **One-shot services:** compose counts a container that runs and exits, such as a migration
+    or seed job, as a failure to start. For a stack with one, set `wait: false` and give
+    `health-url` instead.
 - **`cpp-build`:** runs the repo's own build and test commands in bash on any runner (Git Bash on
   Windows), so it fits CMake, a `Setup.py` or a packaging script alike. Around them it installs
   `apt-packages`, puts MSVC on `PATH` with `msvc` (found with vswhere, so no edition path is
@@ -143,7 +146,8 @@ All of them run with the least permission they need. The caller must grant at le
 - **`inno-setup`:** compiles a Windows installer on `windows-latest`, passing `version` as
   `/DAppVersion=...`, then runs the repo's `smoke-test` PowerShell and, with `artifact`, uploads the
   `.exe` for `release.yml` to attach. Run it in CI with a placeholder version so a broken script
-  fails the pull request rather than the release.
+  fails the pull request rather than the release. Installing Inno Setup from Chocolatey is
+  retried, since the community feed sometimes rate-limits or times out.
 
 ### Python dependency locks
 
@@ -183,6 +187,10 @@ Pushes that don't change the version do nothing.
 
 `draft: true` publishes a draft to review before announcing. The tag is still created, so the next
 push doesn't start a second draft.
+
+Publishing is all or nothing. The tag is what marks a version released, so if creating the
+release fails, for example on an asset upload, the partial release and the tag are removed again,
+and re-running the workflow retries the whole release.
 
 - **`notes-file`:** a Markdown file, such as install instructions, placed above the generated
   notes. `{version}`, `{tag}` and `{repository}` in it are filled in.
