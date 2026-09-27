@@ -16,10 +16,10 @@ It detects the stack (`python`, `cpp`, `shell` or `data`) and the version file, 
 
 | File | What it runs |
 |---|---|
-| `workflows/ci.yml` | `python-ci` for Python repos, and `lint` for every repo |
+| `workflows/ci.yml` | `python-ci` for Python repos, `cpp-build` on Linux and Windows for CMake repos, `compose-test` per compose file, `inno-setup` per `.iss` script, and `lint` for every repo |
 | `workflows/security.yml` | `security`, `codeql`, `dependency-review` (PRs) and a `container-scan` per Dockerfile. It also runs weekly |
 | `workflows/prepare-release.yml` | Stage one of a release. Only written when a version file is found |
-| `workflows/release.yml` | Stage two: checks, then tag and publish |
+| `workflows/release.yml` | Stage two: checks, then tag and publish, building and attaching any Inno Setup installers at the released version |
 | `dependabot.yml` | Actions, plus pip, docker, docker-compose, npm and git submodules when the repo has them |
 
 Every call is pinned to the commit of this library's latest release, with the tag as a comment:
@@ -48,6 +48,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file` | `contents: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `commands` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
 - **`python-ci`:**
@@ -94,6 +95,29 @@ All of them run with the least permission they need. The caller must grant at le
 - **`compose-test`:** builds and starts a Compose stack, waits for every service with a
   healthcheck to report healthy (and for `health-url`, when given), then runs `commands` against
   it. Logs are printed on failure and the stack is always removed, volumes included.
+- **`cpp-build`:** runs the repo's own build and test commands in bash on any runner (Git Bash on
+  Windows), so it fits CMake, a `Setup.py` or a packaging script alike. Around them it installs
+  `apt-packages`, puts MSVC on `PATH` with `msvc` (found with vswhere, so no edition path is
+  hard-coded), restores `cache-paths` keyed on `cache-key-files`, and uploads `artifact-path` as
+  `artifact`. The cache is named by `cache-key`, or else the artifact name, so a CI build and a
+  release build of the same thing can share one. For several platforms or configurations, the
+  caller passes a matrix:
+
+  ```yaml
+  build:
+    uses: NearlyTRex/Workflows/.github/workflows/cpp-build.yml@<sha> # vX
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    with:
+      runs-on: ${{ matrix.os }}
+      msvc: ${{ matrix.os == 'windows-latest' }}
+      build-command: cmake -S . -B build && cmake --build build --config Release
+      test-command: ctest --test-dir build -C Release --output-on-failure
+  ```
+
 - **`inno-setup`:** compiles a Windows installer on `windows-latest`, passing `version` as
   `/DAppVersion=...`, then runs the repo's `smoke-test` PowerShell and, with `artifact`, uploads the
   `.exe` for `release.yml` to attach. Run it in CI with a placeholder version so a broken script

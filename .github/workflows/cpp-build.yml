@@ -1,0 +1,142 @@
+name: C++ Build
+
+# Builds and tests a C or C++ project on one runner, and optionally uploads what
+# it built for release.yml to attach. The build itself is the repo's own
+# command (cmake, a Setup.py, a packaging script), so this covers any build
+# system; what it adds is the setup around it. Pass a matrix from the caller for
+# several platforms or configurations:
+#
+#   strategy:
+#     matrix:
+#       os: [ubuntu-latest, windows-latest]
+#   with:
+#     runs-on: ${{ matrix.os }}
+#     artifact: app-${{ matrix.os }}
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        type: string
+        default: ubuntu-latest
+      submodules:
+        description: false, true or recursive
+        type: string
+        default: "false"
+      fetch-depth:
+        description: Commits of history to fetch; 0 for all, which git describe needs
+        type: number
+        default: 1
+      apt-packages:
+        description: Space-separated packages to apt-get install first; skipped on other runners
+        type: string
+        default: ""
+      msvc:
+        description: Put the MSVC compiler and tools on PATH first; Windows runners only
+        type: boolean
+        default: false
+      msvc-arch:
+        description: vcvarsall architecture, e.g. x64, x86, x64_arm64
+        type: string
+        default: x64
+      cache-paths:
+        description: Newline-separated paths to cache between runs, such as fetched dependencies
+        type: string
+        default: ""
+      cache-key-files:
+        description: Glob of the files that decide when the cache is stale, e.g. cmake/deps.cmake
+        type: string
+        default: ""
+      cache-key:
+        description: >-
+          Names the cache, so jobs building the same thing share one (a CI build and a release
+          build of one preset). Defaults to the artifact name.
+        type: string
+        default: ""
+      build-command:
+        description: Run in bash on every runner (Git Bash on Windows), after any MSVC setup
+        type: string
+        required: true
+      test-command:
+        description: Run in bash after the build
+        type: string
+        default: ""
+      artifact:
+        description: Upload artifact-path under this name; empty uploads nothing
+        type: string
+        default: ""
+      artifact-path:
+        description: Newline-separated paths or globs to upload
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: ${{ inputs.submodules }}
+          fetch-depth: ${{ inputs.fetch-depth }}
+
+      # Skipped off Linux, so a matrix can pass one package list to every runner.
+      - name: Install packages
+        if: inputs.apt-packages != '' && runner.os == 'Linux'
+        shell: bash
+        env:
+          PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          read -ra packages <<< "$PACKAGES"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${packages[@]}"
+
+      # The same environment a Developer Command Prompt gets, exported to every
+      # later step, found with vswhere rather than a hard-coded edition path.
+      - name: Set up MSVC
+        if: inputs.msvc
+        shell: pwsh
+        env:
+          ARCH: ${{ inputs.msvc-arch }}
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "No Visual Studio with the C++ tools found" }
+          $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvarsall.bat"
+          cmd /c "`"$vcvars`" $env:ARCH > nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
+          }
+          Write-Host "MSVC environment from $vs ($env:ARCH)"
+
+      - name: Cache
+        if: inputs.cache-paths != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ inputs.cache-paths }}
+          key: cpp-build-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ hashFiles(inputs.cache-key-files || 'CMakeLists.txt') }}
+
+      - name: Build
+        shell: bash
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: bash -euo pipefail -c "$BUILD_COMMAND"
+
+      - name: Test
+        if: inputs.test-command != ''
+        shell: bash
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: bash -euo pipefail -c "$TEST_COMMAND"
+
+      - if: inputs.artifact != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ inputs.artifact-path }}
+          if-no-files-found: error
+          retention-days: 14
