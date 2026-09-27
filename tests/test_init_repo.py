@@ -279,6 +279,29 @@ def test_repin_moves_only_the_pins(tmp_path, capsys, monkeypatch):
     assert (repo / ".github/workflows/other.yml").read_text().endswith("@" + "b" * 40 + " # v9\n")
 
 
+def test_repin_dry_run_writes_nothing(tmp_path, capsys, monkeypatch):
+    repo = make_repo(tmp_path, PYTHON)
+    init_repo.main([str(repo), "--ref", "HEAD"])
+    before = {path.name: path.read_text() for path in (repo / ".github/workflows").glob("*.yml")}
+    monkeypatch.setattr(init_repo, "resolve_ref", lambda ref: ("c" * 40, "v9.9.9"))
+
+    assert init_repo.main([str(repo), "--repin", "--dry-run"]) == 0
+    assert "Would pin to v9.9.9" in capsys.readouterr().out
+    assert {path.name: path.read_text() for path in (repo / ".github/workflows").glob("*.yml")} == before
+
+
+def test_repin_reports_pins_already_at_the_ref(tmp_path, capsys, monkeypatch):
+    repo = make_repo(tmp_path, PYTHON)
+    init_repo.main([str(repo), "--ref", "HEAD"])
+    monkeypatch.setattr(init_repo, "resolve_ref", lambda ref: ("c" * 40, "v9.9.9"))
+    init_repo.main([str(repo), "--repin"])
+    capsys.readouterr()
+
+    assert init_repo.main([str(repo), "--repin"]) == 0
+    out = capsys.readouterr().out
+    assert "Already pinned to v9.9.9" in out and "No library pins found" not in out
+
+
 def test_repin_without_pins(tmp_path, capsys):
     repo = make_repo(tmp_path, {"a.sh": ""})
     (repo / ".github/workflows").mkdir(parents=True)
