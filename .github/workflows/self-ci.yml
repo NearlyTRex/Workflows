@@ -80,6 +80,9 @@ jobs:
       # Ninja rather than the Visual Studio generator on Windows, so the build
       # only works if the MSVC setup really put cl.exe on PATH.
       msvc: ${{ matrix.os == 'windows-latest' }}
+      # Linux only; the Windows leg checks it is skipped cleanly.
+      ccache: true
+      cache-key: fixture-cpp
       build-command: |
         cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
         cmake --build build --parallel

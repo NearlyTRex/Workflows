@@ -48,7 +48,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file` | `contents: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `commands` | `contents: read` |
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `ccache` (false), `ccache-max-size` (500M), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
 - **`python-ci`:**
@@ -118,6 +118,10 @@ All of them run with the least permission they need. The caller must grant at le
       test-command: ctest --test-dir build -C Release --output-on-failure
   ```
 
+  With `ccache: true` on Linux runners, it also installs ccache and routes CMake's compilers
+  through it, so a build only recompiles what changed since the last run. Each run saves its
+  ccache under a new key and the next restores the newest one, so the cache follows the code, and
+  the hit rate is printed after the build. Builds that don't use CMake call `ccache` themselves.
 - **`inno-setup`:** compiles a Windows installer on `windows-latest`, passing `version` as
   `/DAppVersion=...`, then runs the repo's `smoke-test` PowerShell and, with `artifact`, uploads the
   `.exe` for `release.yml` to attach. Run it in CI with a placeholder version so a broken script

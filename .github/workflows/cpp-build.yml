@@ -52,6 +52,16 @@ on:
           build of one preset). Defaults to the artifact name.
         type: string
         default: ""
+      ccache:
+        description: >-
+          Install ccache, route CMake's compilers through it, and keep its cache between runs, so
+          a build recompiles only what changed. Linux runners only.
+        type: boolean
+        default: false
+      ccache-max-size:
+        description: Largest the ccache directory may grow, e.g. 500M or 2G
+        type: string
+        default: 500M
       build-command:
         description: Run in bash on every runner (Git Bash on Windows), after any MSVC setup
         type: string
@@ -120,11 +130,62 @@ jobs:
           path: ${{ inputs.cache-paths }}
           key: cpp-build-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ hashFiles(inputs.cache-key-files || 'CMakeLists.txt') }}
 
+      # CMake reads the launcher variables from the environment when it
+      # configures, so any CMake build uses ccache without changing the build
+      # command. CCACHE_BASEDIR makes paths relative, so a hit doesn't depend on
+      # where the runner checked out.
+      - name: Set up ccache
+        if: inputs.ccache && runner.os == 'Linux'
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+          MAX_SIZE: ${{ inputs.ccache-max-size }}
+        run: |
+          sudo apt-get install -y --no-install-recommends ccache
+          {
+            echo "CCACHE_DIR=$CCACHE_DIR"
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_MAXSIZE=$MAX_SIZE"
+            echo "CCACHE_COMPRESS=true"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+
+      # Every run saves under a new key, and restores the newest earlier one by
+      # prefix, so the cache follows the code instead of freezing at its first
+      # save. GitHub evicts the least recently used when the repo is full.
+      - name: Restore ccache
+        id: ccache
+        if: inputs.ccache && runner.os == 'Linux'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-
+
+      - name: Reset ccache statistics
+        if: steps.ccache.outcome == 'success'
+        shell: bash
+        run: ccache --zero-stats
+
       - name: Build
         shell: bash
         env:
           BUILD_COMMAND: ${{ inputs.build-command }}
         run: bash -euo pipefail -c "$BUILD_COMMAND"
+
+      # Also after a failed build: whatever did compile is still worth keeping.
+      - name: ccache statistics
+        if: always() && steps.ccache.outcome == 'success'
+        shell: bash
+        run: ccache --show-stats
+
+      - name: Save ccache
+        if: always() && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Test
         if: inputs.test-command != ''
