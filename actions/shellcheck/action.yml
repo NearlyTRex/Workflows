@@ -1,0 +1,12 @@
+name: shellcheck
+description: >-
+  Runs shellcheck over every tracked shell script, found by its .sh or .bash
+  extension or by a sh, bash, dash or ksh shebang. Needs setup-tools first.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/find_shell_scripts.py
+      run: python3 "$SCRIPT" | xargs -0 -r "$RUNNER_TEMP/workflow-tools/bin/shellcheck" --format gcc

@@ -11,7 +11,9 @@ permissions: {}
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only pull requests: a newer push supersedes their run. On main every run
+  # finishes, since each push's secret scan covers only that push's commits.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   tests:
@@ -89,3 +91,23 @@ jobs:
       test-command: ctest --test-dir build --output-on-failure
       artifact: fixture-cpp-${{ matrix.os }}
       artifact-path: build/fixture_test*
+
+  # The release workflow end to end, short of creating anything: downloads the
+  # C++ fixture builds as assets, renders the notes, writes the checksums and
+  # prints the gh commands it would run. It proceeds even though this
+  # library's VERSION is already tagged. It needs contents: write only because
+  # release.yml's job declares it; a dry run writes nothing, and a pull request
+  # from a fork gets a read-only token regardless.
+  release-dry-run:
+    name: Release (dry run)
+    needs: cpp
+    uses: $/.github/workflows/release.yml
+    permissions:
+      contents: write # release.yml's job declares it; a dry run writes nothing
+    with:
+      version-file: VERSION
+      title: Workflows
+      assets: fixture-cpp-*
+      checksums: true
+      notes-file: tests/fixtures/release-notes.md
+      dry-run: true

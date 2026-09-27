@@ -1,0 +1,57 @@
+name: Publish release
+description: >-
+  Tags a commit and publishes its GitHub Release with notes, assets and
+  checksums, all or nothing: if publishing fails, the partial release and the
+  tag are removed so a re-run retries it. dry-run prepares everything and prints
+  the commands instead.
+
+inputs:
+  tag:
+    required: true
+  version:
+    required: true
+  title:
+    required: true
+  draft:
+    required: false
+    default: "false"
+  assets-dir:
+    description: Directory whose files are attached; empty attaches nothing
+    required: false
+    default: ""
+  checksums:
+    required: false
+    default: "false"
+  notes-file:
+    required: false
+    default: ""
+  dry-run:
+    required: false
+    default: "false"
+  token:
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  released:
+    value: ${{ steps.publish.outputs.released }}
+
+runs:
+  using: composite
+  steps:
+    - id: publish
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/publish_release.py
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.sha }}
+        TAG: ${{ inputs.tag }}
+        VERSION: ${{ inputs.version }}
+        TITLE: ${{ inputs.title }}
+        DRAFT: ${{ inputs.draft }}
+        ASSETS_DIR: ${{ inputs.assets-dir }}
+        CHECKSUMS: ${{ inputs.checksums }}
+        NOTES_FILE: ${{ inputs.notes-file }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: python3 "$SCRIPT"

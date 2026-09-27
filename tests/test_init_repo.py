@@ -388,5 +388,23 @@ def test_workflow_and_job_names_are_capitalized(tmp_path):
         "Security": ["CodeQL", "Container Scan (docker/Dockerfile)", "Container Scan (other/Dockerfile)",
                      "Dependency Review", "Security"],
         "Prepare Release": ["Prepare"],
-        "Release": ["Check", "Release"],
+        "Release": ["Check", "Pending", "Release"],
     }
+
+
+@pytest.mark.parametrize("files", [PYTHON, {**PYTHON, "packaging/app.iss": ""}])
+def test_release_checks_only_run_when_a_release_is_pending(tmp_path, files):
+    repo = make_repo(tmp_path, files)
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    jobs = yaml.safe_load(outputs[".github/workflows/release.yml"])["jobs"]
+    assert "/release-check.yml@" in jobs["pending"]["uses"]
+    assert jobs["check"]["needs"] == "pending"
+    assert jobs["check"]["if"] == "needs.pending.outputs.pending == 'true'"
+
+
+def test_only_pull_request_runs_are_cancelled(tmp_path):
+    repo = make_repo(tmp_path, PYTHON)
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    for name in [".github/workflows/ci.yml", ".github/workflows/security.yml"]:
+        concurrency = yaml.safe_load(outputs[name])["concurrency"]
+        assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"

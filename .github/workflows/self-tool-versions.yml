@@ -1,0 +1,24 @@
+name: Self Tool Versions
+
+# Tools Dependabot can't track. Chocolatey isn't one of its ecosystems, so the
+# Inno Setup version inno-setup.yml installs would go stale silently; this run
+# fails, with the version to move to, when a newer one is out.
+on:
+  schedule:
+    - cron: "43 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 scripts/check_tool_versions.py

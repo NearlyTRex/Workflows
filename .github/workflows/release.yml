@@ -34,6 +34,12 @@ on:
           {version}, {tag} and {repository} in it are replaced.
         type: string
         default: ""
+      dry-run:
+        description: >-
+          Do everything except create the tag and the release, even when the version is
+          already tagged, and print the commands instead. For testing a release setup.
+        type: boolean
+        default: false
     outputs:
       released:
         value: ${{ jobs.release.outputs.released }}
@@ -80,7 +86,7 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - if: steps.check.outputs.exists == 'false' && inputs.assets != ''
+      - if: (steps.check.outputs.exists == 'false' || inputs.dry-run) && inputs.assets != ''
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: ${{ inputs.assets }}
@@ -88,50 +94,18 @@ jobs:
           merge-multiple: true
 
       # The tag is created first so a draft release, which doesn't create its
-      # tag until published, still marks this version as released.
+      # tag until published, still marks this version as released. Publishing
+      # is all or nothing: see actions/publish-release.
       - id: tag
         name: Tag and publish
-        if: steps.check.outputs.exists == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          TAG: ${{ inputs.tag-prefix }}${{ steps.version.outputs.version }}
-          VERSION: ${{ steps.version.outputs.version }}
-          TITLE: ${{ inputs.title || github.event.repository.name }}
-          DRAFT: ${{ inputs.draft }}
-          ASSETS_DIR: ${{ runner.temp }}/release-assets
-          CHECKSUMS: ${{ inputs.checksums }}
-          NOTES_FILE: ${{ inputs.notes-file }}
-        run: |
-          args=(--repo "$REPO" --verify-tag --title "$TITLE $VERSION" --generate-notes)
-          if [ "$DRAFT" = "true" ]; then args+=(--draft); fi
-          # gh puts the given notes above the generated ones.
-          if [ -n "$NOTES_FILE" ]; then
-            notes="$RUNNER_TEMP/release-notes.md"
-            sed -e "s|{version}|$VERSION|g" -e "s|{tag}|$TAG|g" -e "s|{repository}|$REPO|g" \
-              "$NOTES_FILE" > "$notes"
-            args+=(--notes-file "$notes")
-          fi
-          assets=()
-          if [ -d "$ASSETS_DIR" ]; then
-            mapfile -t assets < <(find "$ASSETS_DIR" -type f | sort)
-          fi
-          if [ "$CHECKSUMS" = "true" ] && [ "${#assets[@]}" -gt 0 ]; then
-            (cd "$ASSETS_DIR" && find . -type f -printf '%P\0' | sort -z | xargs -0 sha256sum) \
-              > "$RUNNER_TEMP/SHA256SUMS.txt"
-            assets+=("$RUNNER_TEMP/SHA256SUMS.txt")
-          fi
-          # All or nothing. The tag is what marks a version released, so a tag
-          # left behind by a failed publish would make every re-run skip it.
-          # Everything that can fail beforehand is done above; if publishing
-          # fails, the partial release and the tag go too, and a re-run starts
-          # clean.
-          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" --silent
-          if ! gh release create "$TAG" "${args[@]}" "${assets[@]}"; then
-            echo "::error::Publishing $TAG failed. Removed the tag and any partial release, so re-running this workflow retries it."
-            gh release delete "$TAG" --repo "$REPO" --yes 2>/dev/null || true
-            gh api -X DELETE "repos/$REPO/git/refs/tags/$TAG" --silent 2>/dev/null || true
-            exit 1
-          fi
-          echo "released=true" >> "$GITHUB_OUTPUT"
+        if: steps.check.outputs.exists == 'false' || inputs.dry-run
+        uses: $/actions/publish-release
+        with:
+          tag: ${{ inputs.tag-prefix }}${{ steps.version.outputs.version }}
+          version: ${{ steps.version.outputs.version }}
+          title: ${{ inputs.title || github.event.repository.name }}
+          draft: ${{ inputs.draft }}
+          assets-dir: ${{ inputs.assets != '' && format('{0}/release-assets', runner.temp) || '' }}
+          checksums: ${{ inputs.checksums }}
+          notes-file: ${{ inputs.notes-file }}
+          dry-run: ${{ inputs.dry-run }}
