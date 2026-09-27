@@ -26,6 +26,13 @@ on:
         description: Commits of history to fetch; 0 for all, which git describe needs
         type: number
         default: 1
+      local-tag:
+        description: >-
+          Tag the checked-out commit with this, locally and never pushed, before building. For a
+          release build, pass release-check's tag: release.yml only tags the commit after the
+          builds, so without it git describe can't name the release it is building.
+        type: string
+        default: ""
       apt-packages:
         description: Space-separated packages to apt-get install first; skipped on other runners
         type: string
@@ -94,6 +101,15 @@ jobs:
           persist-credentials: false
           submodules: ${{ inputs.submodules }}
           fetch-depth: ${{ inputs.fetch-depth }}
+
+      # Lightweight, so it needs no git identity, and the same commit release.yml
+      # tags afterwards, so the binary and the release agree.
+      - name: Tag locally
+        if: inputs.local-tag != ''
+        shell: bash
+        env:
+          TAG: ${{ inputs.local-tag }}
+        run: git tag "$TAG" && git describe --tags --always
 
       # Skipped off Linux, so a matrix can pass one package list to every runner.
       - name: Install packages
