@@ -42,4 +42,15 @@ runs:
         fi
         read -ra command <<< "$TEST_COMMAND"
         python -m coverage run "${options[@]}" -m "${command[@]}"
-        python -m coverage report --fail-under="$FAIL_UNDER" --show-missing --skip-covered
+        status=0
+        python -m coverage report --fail-under="$FAIL_UNDER" --show-missing --skip-covered || status=$?
+        # The same table on the run page, so a failing gate shows what is missing
+        # without opening the log.
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "### Coverage (minimum $FAIL_UNDER%)"
+            echo
+            python -m coverage report --format=markdown --show-missing --skip-covered
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+        exit "$status"

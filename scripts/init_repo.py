@@ -11,7 +11,8 @@ Writes into TARGET/.github:
                                    and a container scan per Dockerfile; also weekly
     workflows/prepare-release.yml  stage one of a release (when a version file is found)
     workflows/release.yml          stage two of a release
-    dependabot.yml                 actions, plus pip, docker, npm and submodules when present
+    dependabot.yml                 actions, plus pip, docker, docker-compose, npm and
+                                   submodules when present
 
 Every library reference is pinned to the commit of REF (default: this repo's latest
 tag) with the tag as a comment, which is what lets Dependabot bump the pin when the
@@ -140,6 +141,13 @@ def dockerfiles(files):
     return sorted(f for f in files if Path(f).name == "Dockerfile")
 
 
+COMPOSE_FILES = {"compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"}
+
+
+def compose_files(files):
+    return sorted(f for f in files if Path(f).name in COMPOSE_FILES)
+
+
 def directory_of(path):
     parent = str(Path(path).parent)
     return "/" if parent == "." else "/" + parent
@@ -224,7 +232,8 @@ jobs:
       contents: read
     with:
       dockerfile: {dockerfile}
-      context: {context}""")
+      context: {context}
+      config-scan: true""")
         return f"""name: Security
 
 on:
@@ -310,6 +319,10 @@ jobs:
             updates.append(("npm", ["/"], "npm"))
         if images:
             updates.append(("docker", sorted({directory_of(f) for f in images}), "docker"))
+        # Images named in compose files (a database, a search engine) are not in any
+        # Dockerfile, so the docker ecosystem never sees them.
+        if compose := compose_files(files):
+            updates.append(("docker-compose", sorted({directory_of(f) for f in compose}), "docker-compose"))
         if ".gitmodules" in names:
             updates.append(("gitsubmodule", ["/"], "submodules"))
         blocks = []

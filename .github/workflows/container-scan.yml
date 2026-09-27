@@ -1,6 +1,7 @@
 name: Container Scan
 
 # Builds the image and fails on HIGH or CRITICAL vulnerabilities that have a fix.
+# With config-scan, also fails on misconfigurations in the Dockerfile's directory.
 on:
   workflow_call:
     inputs:
@@ -13,6 +14,10 @@ on:
       severity:
         type: string
         default: HIGH,CRITICAL
+      config-scan:
+        description: Also scan the Dockerfile's directory for misconfigurations, such as running as root
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -39,4 +44,17 @@ jobs:
       - uses: $/actions/trivy
         with:
           input: .container-scan.tar
+          severity: ${{ inputs.severity }}
+
+      - name: Find the Dockerfile's directory
+        if: inputs.config-scan
+        id: config
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+        run: echo "path=$(dirname "$DOCKERFILE")" >> "$GITHUB_OUTPUT"
+
+      - if: inputs.config-scan
+        uses: $/actions/trivy-config
+        with:
+          path: ${{ steps.config.outputs.path }}
           severity: ${{ inputs.severity }}

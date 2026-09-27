@@ -50,3 +50,4 @@ jobs:
     with:
       dockerfile: tests/fixtures/python-app/Dockerfile
       context: tests/fixtures/python-app
+      config-scan: true
