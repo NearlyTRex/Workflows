@@ -48,7 +48,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file` | `contents: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `commands` | `contents: read` |
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `ccache` (false), `ccache-max-size` (500M), `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
 - **`python-ci`:**
@@ -118,10 +118,20 @@ All of them run with the least permission they need. The caller must grant at le
       test-command: ctest --test-dir build -C Release --output-on-failure
   ```
 
-  With `ccache: true` on Linux runners, it also installs ccache and routes CMake's compilers
-  through it, so a build only recompiles what changed since the last run. Each run saves its
-  ccache under a new key and the next restores the newest one, so the cache follows the code, and
-  the hit rate is printed after the build. Builds that don't use CMake call `ccache` themselves.
+  Builds use every core: `parallel` sets `CMAKE_BUILD_PARALLEL_LEVEL`, and `MAKEFLAGS=-j` off
+  Windows, where plain `make` would otherwise run one job at a time.
+
+  With `ccache: true` on Linux runners, it also installs ccache and routes the compilers through
+  it, CMake's through its launcher setting and any other build system's through ccache's
+  wrappers first on `PATH`, so a build only recompiles what changed since the last run. Each run
+  saves its ccache under a new key and the next restores the newest one, so the cache follows the
+  code, and the hit rate is printed after the build.
+
+  By default ccache refuses compiles that use a precompiled header, so `ccache-sloppiness`
+  defaults to `pch_defines,time_macros,include_file_mtime,include_file_ctime`, which accepts
+  them and ignores the fresh file times every checkout has. With clang, also build the header
+  with `-Xclang=-fno-pch-timestamp`: otherwise each rebuilt `.pch` differs from the last, and
+  every file that includes it misses. The stats list any calls still uncacheable, and why.
 
   A release build that stamps `git describe` into the binary should pass `local-tag:` with
   `release-check`'s `tag` output. `release.yml` only tags the commit once the builds are done, so
