@@ -24,6 +24,16 @@ on:
         description: Artifact name pattern from earlier jobs in this run to attach to the release
         type: string
         default: ""
+      checksums:
+        description: Also attach SHA256SUMS.txt covering the assets, so downloads can be verified
+        type: boolean
+        default: false
+      notes-file:
+        description: >-
+          Markdown file placed above the generated notes, such as install instructions.
+          {version}, {tag} and {repository} in it are replaced.
+        type: string
+        default: ""
     outputs:
       released:
         value: ${{ jobs.release.outputs.released }}
@@ -91,13 +101,27 @@ jobs:
           TITLE: ${{ inputs.title || github.event.repository.name }}
           DRAFT: ${{ inputs.draft }}
           ASSETS_DIR: ${{ runner.temp }}/release-assets
+          CHECKSUMS: ${{ inputs.checksums }}
+          NOTES_FILE: ${{ inputs.notes-file }}
         run: |
           gh api "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" --silent
           args=(--repo "$REPO" --verify-tag --title "$TITLE $VERSION" --generate-notes)
           if [ "$DRAFT" = "true" ]; then args+=(--draft); fi
+          # gh puts the given notes above the generated ones.
+          if [ -n "$NOTES_FILE" ]; then
+            notes="$RUNNER_TEMP/release-notes.md"
+            sed -e "s|{version}|$VERSION|g" -e "s|{tag}|$TAG|g" -e "s|{repository}|$REPO|g" \
+              "$NOTES_FILE" > "$notes"
+            args+=(--notes-file "$notes")
+          fi
           assets=()
           if [ -d "$ASSETS_DIR" ]; then
             mapfile -t assets < <(find "$ASSETS_DIR" -type f | sort)
+          fi
+          if [ "$CHECKSUMS" = "true" ] && [ "${#assets[@]}" -gt 0 ]; then
+            (cd "$ASSETS_DIR" && find . -type f -printf '%P\0' | sort -z | xargs -0 sha256sum) \
+              > "$RUNNER_TEMP/SHA256SUMS.txt"
+            assets+=("$RUNNER_TEMP/SHA256SUMS.txt")
           fi
           gh release create "$TAG" "${args[@]}" "${assets[@]}"
           echo "released=true" >> "$GITHUB_OUTPUT"

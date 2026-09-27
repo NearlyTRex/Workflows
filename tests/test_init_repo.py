@@ -81,22 +81,76 @@ def test_every_library_reference_is_pinned_with_a_label(tmp_path):
         assert all(line.rstrip().endswith("# HEAD") for line in path.read_text().splitlines() if "uses:" in line)
 
 
-@pytest.mark.parametrize("files,stack,languages,release_file", [
+@pytest.mark.parametrize("files,stack,languages,release_file,ci_jobs", [
     ({"CMakeLists.txt": "project(T VERSION 2.1.0 LANGUAGES CXX)\n", "main.cpp": ""}, "cpp",
-     '["c-cpp", "actions"]', "CMakeLists.txt"),
-    ({"src/a.cpp": "", "src/a.h": "", "Setup.py": ""}, "cpp", '["c-cpp", "actions"]', None),
-    ({"a.json": "{}", "b.json": "{}", "c.json": "{}", "README.md": ""}, "data", '["actions"]', None),
-    ({"build.sh": "#!/bin/sh\n", "VERSION": "0.3.0\n"}, "shell", '["actions"]', "VERSION"),
+     '["c-cpp", "actions"]', "CMakeLists.txt", {"build", "lint"}),
+    ({"src/a.cpp": "", "src/a.h": "", "Setup.py": ""}, "cpp", '["c-cpp", "actions"]', None, {"lint"}),
+    ({"a.json": "{}", "b.json": "{}", "c.json": "{}", "README.md": ""}, "data", '["actions"]', None,
+     {"lint"}),
+    ({"build.sh": "#!/bin/sh\n", "VERSION": "0.3.0\n"}, "shell", '["actions"]', "VERSION", {"lint"}),
 ])
-def test_stack_detection(tmp_path, files, stack, languages, release_file):
+def test_stack_detection(tmp_path, files, stack, languages, release_file, ci_jobs):
     repo = make_repo(tmp_path, files)
     target, detected, version_file, outputs, _ = init_repo.plan(repo, ref="HEAD")
     assert detected == stack
     assert version_file == release_file
     security = yaml.safe_load(outputs[".github/workflows/security.yml"])
     assert security["jobs"]["codeql"]["with"]["languages"] == languages
-    assert set(yaml.safe_load(outputs[".github/workflows/ci.yml"])["jobs"]) == {"lint"}
+    assert set(yaml.safe_load(outputs[".github/workflows/ci.yml"])["jobs"]) == ci_jobs
     assert (".github/workflows/release.yml" in outputs) == (release_file is not None)
+
+
+@pytest.mark.parametrize("gitmodules", [False, True])
+def test_cmake_repos_build_on_linux_and_windows(tmp_path, gitmodules):
+    files = {"CMakeLists.txt": "project(T VERSION 1.0.0)\n", "main.cpp": ""}
+    if gitmodules:
+        files[".gitmodules"] = ""
+    repo = make_repo(tmp_path, files)
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    build = yaml.safe_load(outputs[".github/workflows/ci.yml"])["jobs"]["build"]
+    assert "/cpp-build.yml@" in build["uses"]
+    assert build["strategy"]["matrix"]["os"] == ["ubuntu-latest", "windows-latest"]
+    assert "ctest" in build["with"]["test-command"]
+    assert build["with"].get("submodules") == ("recursive" if gitmodules else None)
+
+
+@pytest.mark.parametrize("names,jobs", [
+    (["docker/docker-compose.yml"], {"compose"}),
+    (["compose.yaml", "dev/compose.yml"], {"compose-1", "compose-2"}),
+])
+def test_compose_files_get_a_stack_test(tmp_path, names, jobs):
+    repo = make_repo(tmp_path, {"a.sh": "", **{name: "services: {}\n" for name in names}})
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    ci = yaml.safe_load(outputs[".github/workflows/ci.yml"])["jobs"]
+    assert set(ci) == jobs | {"lint"}
+    assert sorted(ci[job]["with"]["compose-file"] for job in jobs) == sorted(names)
+    assert all("/compose-test.yml@" in ci[job]["uses"] for job in jobs)
+
+
+def test_installer_is_compiled_in_ci_and_attached_on_release(tmp_path):
+    repo = make_repo(tmp_path, {**PYTHON, "packaging/app.iss": ""})
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    installer = yaml.safe_load(outputs[".github/workflows/ci.yml"])["jobs"]["installer"]
+    assert "/inno-setup.yml@" in installer["uses"]
+    assert installer["with"] == {"script": "packaging/app.iss", "version": "0.0.0-ci"}
+
+    release = yaml.safe_load(outputs[".github/workflows/release.yml"])["jobs"]
+    assert set(release) == {"check", "pending", "installer", "release"}
+    assert "/release-check.yml@" in release["pending"]["uses"]
+    assert release["installer"]["if"] == "needs.pending.outputs.pending == 'true'"
+    assert release["installer"]["with"]["version"] == "${{ needs.pending.outputs.version }}"
+    assert release["release"]["needs"] == ["check", "installer"]
+    assert release["release"]["with"]["assets"] == "installer*"
+    assert release["release"]["with"]["checksums"] is True
+
+
+def test_several_installers_each_get_a_job(tmp_path):
+    repo = make_repo(tmp_path, {**PYTHON, "a.iss": "", "b/b.iss": ""})
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    assert {"installer-1", "installer-2"} <= set(yaml.safe_load(outputs[".github/workflows/ci.yml"])["jobs"])
+    release = yaml.safe_load(outputs[".github/workflows/release.yml"])["jobs"]
+    assert release["release"]["needs"] == ["check", "installer-1", "installer-2"]
+    assert release["installer-2"]["with"]["artifact"] == "installer-2"
 
 
 def test_release_checks_run_lint_outside_python(tmp_path):

@@ -16,10 +16,10 @@ It detects the stack (`python`, `cpp`, `shell` or `data`) and the version file, 
 
 | File | What it runs |
 |---|---|
-| `workflows/ci.yml` | `python-ci` for Python repos, and `lint` for every repo |
+| `workflows/ci.yml` | `python-ci` for Python repos, `cpp-build` on Linux and Windows for CMake repos, `compose-test` per compose file, `inno-setup` per `.iss` script, and `lint` for every repo |
 | `workflows/security.yml` | `security`, `codeql`, `dependency-review` (PRs) and a `container-scan` per Dockerfile. It also runs weekly |
 | `workflows/prepare-release.yml` | Stage one of a release. Only written when a version file is found |
-| `workflows/release.yml` | Stage two: checks, then tag and publish |
+| `workflows/release.yml` | Stage two: checks, then tag and publish, building and attaching any Inno Setup installers at the released version |
 | `dependabot.yml` | Actions, plus pip, docker, docker-compose, npm and git submodules when the repo has them |
 
 Every call is pinned to the commit of this library's latest release, with the tag as a comment:
@@ -40,12 +40,16 @@ All of them run with the least permission they need. The caller must grant at le
 |---|---|---|
 | `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100) | `contents: read` |
 | `lint.yml` | `shellcheck` (true), `markdown` (true), `json` (true) | `contents: read` |
-| `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files` | `contents: read` |
+| `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files`, `tracked-files` (true), `tracked-files-patterns` | `contents: read` |
 | `codeql.yml` | `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
 | `dependency-review.yml` | `fail-on-severity` (moderate) | `contents: read` |
 | `container-scan.yml` | `dockerfile` (Dockerfile), `context` (.), `severity` (HIGH,CRITICAL), `config-scan` (false) | `contents: read` |
 | `prepare-release.yml` | `bump`, `version-file`, `tag-prefix` (v) | `contents: write`, `pull-requests: write` |
-| `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets` | `contents: write` |
+| `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
+| `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file` | `contents: write` |
+| `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `commands` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
 - **`python-ci`:**
   - **Install:** from the hash-locked `lock-file` when there is one, otherwise with
@@ -77,12 +81,47 @@ All of them run with the least permission they need. The caller must grant at le
   - **gitleaks:** scans the whole git history, so a secret that was committed and later deleted
     is still caught. It reads `.gitleaks.toml` for allowlists.
   - **pip-audit:** checks the listed hash-locked files.
+  - **tracked-files:** fails if git tracks a file that could hold a credential: `.env` files,
+    private keys and certificates. It complements gitleaks, which reads contents and so can miss a
+    binary file such as a database an app keeps a token in. `tracked-files-patterns` adds patterns
+    (with a `/` they match the path, otherwise the file name); `!pattern` makes an exception, and
+    `*.example`, `*.sample` and `*.template` files are always allowed.
 - **`container-scan`:** builds the image and fails on HIGH or CRITICAL vulnerabilities that have a
   fix available.
   - **`config-scan`:** also fails on misconfigurations in the Dockerfile's directory, such as a
     container that runs as root. A deliberate exception goes in the repo's `.trivyignore`, with a
     comment saying why. Off by default so existing callers don't go red on a library bump;
     `init_repo.py` turns it on for new repos.
+- **`compose-test`:** builds and starts a Compose stack, waits for every service with a
+  healthcheck to report healthy (and for `health-url`, when given), then runs `commands` against
+  it. Logs are printed on failure and the stack is always removed, volumes included.
+- **`cpp-build`:** runs the repo's own build and test commands in bash on any runner (Git Bash on
+  Windows), so it fits CMake, a `Setup.py` or a packaging script alike. Around them it installs
+  `apt-packages`, puts MSVC on `PATH` with `msvc` (found with vswhere, so no edition path is
+  hard-coded), restores `cache-paths` keyed on `cache-key-files`, and uploads `artifact-path` as
+  `artifact`. The cache is named by `cache-key`, or else the artifact name, so a CI build and a
+  release build of the same thing can share one. For several platforms or configurations, the
+  caller passes a matrix:
+
+  ```yaml
+  build:
+    uses: NearlyTRex/Workflows/.github/workflows/cpp-build.yml@<sha> # vX
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    with:
+      runs-on: ${{ matrix.os }}
+      msvc: ${{ matrix.os == 'windows-latest' }}
+      build-command: cmake -S . -B build && cmake --build build --config Release
+      test-command: ctest --test-dir build -C Release --output-on-failure
+  ```
+
+- **`inno-setup`:** compiles a Windows installer on `windows-latest`, passing `version` as
+  `/DAppVersion=...`, then runs the repo's `smoke-test` PowerShell and, with `artifact`, uploads the
+  `.exe` for `release.yml` to attach. Run it in CI with a placeholder version so a broken script
+  fails the pull request rather than the release.
 
 ### Python dependency locks
 
@@ -121,29 +160,45 @@ The version file is the only place a version is written: `pyproject.toml`, `pack
 Pushes that don't change the version do nothing.
 
 `draft: true` publishes a draft to review before announcing. The tag is still created, so the next
-push doesn't start a second draft. To attach build outputs, upload them as artifacts in an earlier
-job and name them with `assets`:
+push doesn't start a second draft.
+
+- **`notes-file`:** a Markdown file, such as install instructions, placed above the generated
+  notes. `{version}`, `{tag}` and `{repository}` in it are filled in.
+- **`checksums`:** also attaches `SHA256SUMS.txt` covering every asset.
+
+To attach build outputs, build them in an earlier job that uploads them as artifacts, and name them
+with `assets`. `release-check` says whether a release is pending and at which version, so the build
+only runs when there is something to publish, and is stamped with the version being released:
 
 ```yaml
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - ...
-      - uses: actions/upload-artifact@<sha> # vX
-        with:
-          name: dist-linux
-          path: dist/*
+  check:
+    uses: NearlyTRex/Workflows/.github/workflows/release-check.yml@<sha> # vX
+    permissions:
+      contents: read
+    with:
+      version-file: pyproject.toml
+
+  installer:
+    needs: check
+    if: needs.check.outputs.pending == 'true'
+    uses: NearlyTRex/Workflows/.github/workflows/inno-setup.yml@<sha> # vX
+    permissions:
+      contents: read
+    with:
+      script: packaging/app.iss
+      version: ${{ needs.check.outputs.version }}
+      artifact: installer
 
   release:
-    needs: build
+    needs: installer
     uses: NearlyTRex/Workflows/.github/workflows/release.yml@<sha> # vX
     permissions:
       contents: write
     with:
-      version-file: CMakeLists.txt
-      draft: true
-      assets: dist-*
+      version-file: pyproject.toml
+      assets: installer
+      checksums: true
 ```
 
 GitHub doesn't run workflows on a PR opened with the workflow token, so don't make checks required
@@ -180,6 +235,7 @@ so one pin fixes the whole chain. The actions are:
 | `zizmor` | zizmor with [this config](actions/zizmor/zizmor.yml) |
 | `gitleaks`, `trivy`, `trivy-config` | Container actions. Their `Dockerfile` pins the image by digest |
 | `check-json` | Parses every tracked JSON file |
+| `check-tracked-files` | Fails when a file that could hold a credential is tracked |
 | `check-markdown-fences` | Fails on Markdown code fences that don't close, which hide text from the lint rules |
 
 Every third-party action, tool and image is pinned by hash or digest. Dependabot updates all of

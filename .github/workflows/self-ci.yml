@@ -43,3 +43,46 @@ jobs:
     uses: $/.github/workflows/lint.yml
     permissions:
       contents: read
+
+  compose:
+    name: Compose
+    uses: $/.github/workflows/compose-test.yml
+    permissions:
+      contents: read
+    with:
+      compose-file: tests/fixtures/compose/compose.yml
+      health-url: http://127.0.0.1:8000/
+      commands: curl -sf http://127.0.0.1:8000/ | grep -q "Directory listing"
+
+  installer:
+    name: Installer
+    uses: $/.github/workflows/inno-setup.yml
+    permissions:
+      contents: read
+    with:
+      script: tests/fixtures/installer/fixture.iss
+      version: 0.0.0-ci
+      output-dir: tests/fixtures/installer/dist
+      smoke-test: tests\fixtures\installer\smoke-test.ps1
+      artifact: fixture-installer
+
+  cpp:
+    name: C++ (${{ matrix.os }})
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    with:
+      runs-on: ${{ matrix.os }}
+      # Ninja rather than the Visual Studio generator on Windows, so the build
+      # only works if the MSVC setup really put cl.exe on PATH.
+      msvc: ${{ matrix.os == 'windows-latest' }}
+      build-command: |
+        cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --parallel
+      test-command: ctest --test-dir build --output-on-failure
+      artifact: fixture-cpp-${{ matrix.os }}
+      artifact-path: build/fixture_test*

@@ -1,7 +1,8 @@
 name: Security
 
 # Supply-chain and secret checks: zizmor over the workflows, gitleaks over the
-# whole git history, and pip-audit over any hash-locked requirement files.
+# whole git history, pip-audit over any hash-locked requirement files, and a
+# check that no credential-bearing file (.env, private keys) is tracked at all.
 on:
   workflow_call:
     inputs:
@@ -13,6 +14,14 @@ on:
         default: true
       pip-audit-files:
         description: Space-separated hash-locked requirement files to audit
+        type: string
+        default: ""
+      tracked-files:
+        description: Fail if a file that could hold a credential (.env, private keys) is tracked
+        type: boolean
+        default: true
+      tracked-files-patterns:
+        description: Extra space-separated patterns for tracked-files; "!pattern" makes an exception
         type: string
         default: ""
 
@@ -65,3 +74,18 @@ jobs:
           args=()
           for file in $FILES; do args+=(-r "$file"); done
           "$RUNNER_TEMP/workflow-tools/bin/pip-audit" --require-hashes --disable-pip --strict --progress-spinner off "${args[@]}"
+
+  tracked-files:
+    name: Tracked Files
+    if: inputs.tracked-files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/actions/check-tracked-files
+        with:
+          patterns: ${{ inputs.tracked-files-patterns }}

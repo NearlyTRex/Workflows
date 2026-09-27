@@ -6,11 +6,13 @@ Usage:
     init_repo.py TARGET --repin [--ref REF]
 
 Writes into TARGET/.github:
-    workflows/ci.yml               lint, plus python-ci for Python repos
+    workflows/ci.yml               lint, plus python-ci for Python repos, cpp-build for CMake
+                                   repos, compose-test per compose file and inno-setup per
+                                   Inno Setup script
     workflows/security.yml         zizmor, gitleaks, pip-audit, CodeQL, dependency review,
                                    and a container scan per Dockerfile; also weekly
     workflows/prepare-release.yml  stage one of a release (when a version file is found)
-    workflows/release.yml          stage two of a release
+    workflows/release.yml          stage two of a release, attaching the installers
     dependabot.yml                 actions, plus pip, docker, docker-compose, npm and
                                    submodules when present
 
@@ -148,6 +150,10 @@ def compose_files(files):
     return sorted(f for f in files if Path(f).name in COMPOSE_FILES)
 
 
+def installer_scripts(files):
+    return sorted(f for f in files if f.endswith(".iss"))
+
+
 def directory_of(path):
     parent = str(Path(path).parent)
     return "/" if parent == "." else "/" + parent
@@ -163,7 +169,8 @@ class Renderer:
     def uses(self, workflow):
         return f"{self.library}/.github/workflows/{workflow}.yml@{self.sha} # {self.label}"
 
-    def ci(self, stack):
+    def ci(self, stack, files=()):
+        names = {Path(f).name for f in files}
         jobs = []
         if stack == "python":
             jobs.append(f"""  python:
@@ -174,6 +181,48 @@ class Renderer:
     # with:
     #   commands: |
     #     extra checks that run before the tests""")
+        if stack == "cpp" and "CMakeLists.txt" in files:
+            submodules = "\n      submodules: recursive" if ".gitmodules" in names else ""
+            jobs.append(f"""  build:
+    name: Build (${{{{ matrix.os }}}})
+    uses: {self.uses("cpp-build")}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    with:
+      runs-on: ${{{{ matrix.os }}}}
+      msvc: ${{{{ matrix.os == 'windows-latest' }}}}{submodules}
+      build-command: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --config Release --parallel
+      test-command: ctest --test-dir build -C Release --output-on-failure""")
+        for index, compose in enumerate(compose_files(files)):
+            suffix = "" if len(compose_files(files)) == 1 else f"-{index + 1}"
+            jobs.append(f"""  compose{suffix}:
+    name: Compose ({compose})
+    uses: {self.uses("compose-test")}
+    permissions:
+      contents: read
+    with:
+      compose-file: {compose}
+    #   health-url: http://127.0.0.1:8080/health
+    #   commands: |
+    #     checks to run against the running stack""")
+        for index, script in enumerate(installer_scripts(files)):
+            suffix = "" if len(installer_scripts(files)) == 1 else f"-{index + 1}"
+            jobs.append(f"""  installer{suffix}:
+    name: Installer ({script})
+    uses: {self.uses("inno-setup")}
+    permissions:
+      contents: read
+    with:
+      script: {script}
+      # A placeholder: this only proves the script compiles. release.yml builds the real one.
+      version: 0.0.0-ci
+    #   smoke-test: .github\\scripts\\smoke-test-installer.ps1""")
         jobs.append(f"""  lint:
     name: Lint
     uses: {self.uses("lint")}
@@ -280,8 +329,11 @@ jobs:
       version-file: {version_file}
 """
 
-    def release(self, stack, version_file):
+    def release(self, stack, version_file, files=()):
         check = "python-ci" if stack == "python" else "lint"
+        scripts = installer_scripts(files)
+        if scripts:
+            return self.release_with_installers(check, version_file, scripts)
         return f"""name: Release
 
 # Tags and publishes the version in {version_file} once, after the checks pass.
@@ -348,6 +400,65 @@ updates:
 """
 
 
+    def release_with_installers(self, check, version_file, scripts):
+        installers = []
+        for index, script in enumerate(scripts):
+            suffix = "" if len(scripts) == 1 else f"-{index + 1}"
+            installers.append(f"""  installer{suffix}:
+    name: Installer ({script})
+    needs: pending
+    if: needs.pending.outputs.pending == 'true'
+    uses: {self.uses("inno-setup")}
+    permissions:
+      contents: read
+    with:
+      script: {script}
+      version: ${{{{ needs.pending.outputs.version }}}}
+      artifact: installer{suffix}""")
+        needs = ", ".join(["check"] + [f"installer{'' if len(scripts) == 1 else f'-{i + 1}'}"
+                                       for i in range(len(scripts))])
+        installer_jobs = (chr(10) * 2).join(installers)
+        return f"""name: Release
+
+# Tags and publishes the version in {version_file} once, after the checks pass, with
+# the installers built at that version attached. Pushes that don't change the version
+# find the tag already there, and build nothing.
+on:
+  push:
+    branches: [main]
+
+permissions: {{}}
+
+jobs:
+  check:
+    name: Check
+    uses: {self.uses(check)}
+    permissions:
+      contents: read
+
+  pending:
+    name: Pending
+    uses: {self.uses("release-check")}
+    permissions:
+      contents: read
+    with:
+      version-file: {version_file}
+
+{installer_jobs}
+
+  release:
+    name: Release
+    needs: [{needs}]
+    uses: {self.uses("release")}
+    permissions:
+      contents: write
+    with:
+      version-file: {version_file}
+      assets: installer*
+      checksums: true
+"""
+
+
 def repin(target, ref=None, dry_run=False):
     """Point every library reference in target's workflows at ref.
 
@@ -386,13 +497,13 @@ def plan(target, stack=None, version_file=None, release=True, ref=None):
     renderer = Renderer(library_name(), sha, label, target)
     images = dockerfiles(files)
     outputs = {
-        ".github/workflows/ci.yml": renderer.ci(stack),
+        ".github/workflows/ci.yml": renderer.ci(stack, files),
         ".github/workflows/security.yml": renderer.security(stack, hashed_requirement_files(target, files), images),
         ".github/dependabot.yml": renderer.dependabot(stack, files, images),
     }
     if release and version_file:
         outputs[".github/workflows/prepare-release.yml"] = renderer.prepare_release(version_file)
-        outputs[".github/workflows/release.yml"] = renderer.release(stack, version_file)
+        outputs[".github/workflows/release.yml"] = renderer.release(stack, version_file, files)
     warnings = lock_warnings(target, hashed_requirement_files(target, files))
     return target, stack, version_file, outputs, warnings
 

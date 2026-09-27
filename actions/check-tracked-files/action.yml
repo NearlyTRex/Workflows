@@ -1,0 +1,23 @@
+name: Check tracked files
+description: >-
+  Fails if git tracks a file that could hold a credential: .env files, private
+  keys and certificates by default, plus any patterns the repo adds.
+
+inputs:
+  patterns:
+    description: >-
+      Space-separated extra patterns. With a "/" they match the whole path,
+      otherwise the file name. "!pattern" makes an exception.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/check_tracked_files.py
+        PATTERNS: ${{ inputs.patterns }}
+      run: |
+        read -ra patterns <<< "$PATTERNS"
+        python3 "$SCRIPT" "${patterns[@]}"
