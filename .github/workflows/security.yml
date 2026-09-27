@@ -45,7 +45,8 @@ jobs:
     name: Gitleaks
     if: inputs.gitleaks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # A full scan of a large history takes several minutes.
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -53,7 +54,38 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      # Pull requests and pushes scan only their new commits: everything before
+      # them was scanned when it landed. Scheduled and manual runs scan the
+      # whole history, which also catches anything a new rule now recognises.
+      # A push whose earlier commit is unknown (a new branch, a force push)
+      # falls back to the whole history rather than risk skipping anything.
+      - name: Work out what to scan
+        id: range
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          range=""
+          if [ "$EVENT" = "pull_request" ] && [ -n "$PR_BASE" ] && [ -n "$PR_HEAD" ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "${BEFORE//0/}" != "" ] \
+              && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..$AFTER"
+          fi
+          if [ -n "$range" ]; then
+            echo "Scanning the new commits: $range ($(git rev-list --count "$range") commits)"
+          else
+            echo "Scanning the whole history ($(git rev-list --count HEAD) commits)"
+          fi
+          echo "log-opts=$range" >> "$GITHUB_OUTPUT"
+
       - uses: $/actions/gitleaks
+        with:
+          log-opts: ${{ steps.range.outputs.log-opts }}
 
   pip-audit:
     name: Pip Audit

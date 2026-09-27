@@ -1,10 +1,20 @@
 name: gitleaks
 description: >-
-  Scans the whole git history for committed secrets. A secret that was
-  committed and later deleted is still published. Reads .gitleaks.toml from the
-  repository root when present. Needs a checkout with fetch-depth 0.
+  Scans git history for committed secrets: the whole of it by default, since a
+  secret that was committed and later deleted is still published, or only the
+  commits in log-opts. Reads .gitleaks.toml from the repository root when
+  present. Needs a checkout with enough history for the range (fetch-depth 0).
+
+inputs:
+  log-opts:
+    description: >-
+      A git log range such as BASE..HEAD, to scan only those commits. Empty
+      scans the whole history.
+    required: false
+    default: ""
 
 runs:
   using: docker
   image: Dockerfile
-  args: ["git", "--redact", "--no-banner", "--exit-code", "1", "."]
+  args:
+    - ${{ inputs.log-opts }}
