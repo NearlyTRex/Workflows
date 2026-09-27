@@ -3,3 +3,6 @@ FROM zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c
 # The workspace is owned by the runner's user, not this container's.
 USER root
 RUN git config --system --add safe.directory '*'
+
+COPY entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
