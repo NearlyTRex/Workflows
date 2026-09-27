@@ -1,11 +1,16 @@
 name: Lint
 
-# Language-agnostic checks: shellcheck on tracked shell scripts, and every
-# tracked JSON file must parse. Each is skipped when there is nothing to check.
+# Language-agnostic checks: shellcheck on tracked shell scripts, markdownlint
+# rules on Markdown (rumdl, using the repo's .markdownlint.* or rumdl config when
+# it has one), and every tracked JSON file must parse. Each is skipped when there
+# is nothing to check.
 on:
   workflow_call:
     inputs:
       shellcheck:
+        type: boolean
+        default: true
+      markdown:
         type: boolean
         default: true
       json:
@@ -26,7 +31,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - if: inputs.shellcheck
+      - if: inputs.shellcheck || inputs.markdown
         uses: $/actions/setup-tools
 
       - name: shellcheck
@@ -34,6 +39,10 @@ jobs:
         run: |
           git ls-files -z '*.sh' '*.bash' \
             | xargs -0 -r "$RUNNER_TEMP/workflow-tools/bin/shellcheck" --format gcc
+
+      - name: Markdown
+        if: inputs.markdown
+        run: '"$RUNNER_TEMP/workflow-tools/bin/rumdl" check --output-format github .'
 
       - name: JSON
         if: inputs.json

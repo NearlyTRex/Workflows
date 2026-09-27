@@ -1,8 +1,8 @@
 name: Set up workflow tools
 description: >-
-  Installs zizmor, pip-audit, ruff and shellcheck from a hash-locked file into a
-  private venv at $RUNNER_TEMP/workflow-tools. Later steps call them by full path,
-  so PATH and the caller's own Python are left alone.
+  Installs zizmor, pip-audit, ruff, shellcheck and rumdl from a hash-locked file
+  into a private venv at $RUNNER_TEMP/workflow-tools. Later steps call them by full
+  path, so PATH and the caller's own Python are left alone.
 
 runs:
   using: composite

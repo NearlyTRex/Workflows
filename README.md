@@ -1,4 +1,5 @@
 # Workflows
+
 Reusable template library for github workflows
 
 My repos call these workflows instead of carrying their own copies. A fix or tool update made here
@@ -38,7 +39,7 @@ All of them run with the least permission they need. The caller must grant at le
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
 | `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100) | `contents: read` |
-| `lint.yml` | `shellcheck` (true), `json` (true) | `contents: read` |
+| `lint.yml` | `shellcheck` (true), `markdown` (true), `json` (true) | `contents: read` |
 | `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files` | `contents: read` |
 | `codeql.yml` | `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
 | `dependency-review.yml` | `fail-on-severity` (moderate) | `contents: read` |
@@ -60,8 +61,12 @@ All of them run with the least permission they need. The caller must grant at le
       omit a generated file.
     - **Test command:** with coverage on, `test-command` must be a Python module and its
       arguments, like `pytest -q`.
-- **`lint`:** shellchecks every tracked `*.sh` and `*.bash` file, and checks that every tracked
-  `*.json` file parses. Each check is skipped when there's nothing to check.
+- **`lint`:** shellchecks every tracked `*.sh` and `*.bash` file, checks that every tracked
+  `*.json` file parses, and lints Markdown with [rumdl](https://github.com/rvben/rumdl), which
+  implements the markdownlint rules. Each check is skipped when there's nothing to check.
+  - **Markdown config:** rumdl reads the repo's `.markdownlint.json`/`.yaml`, `.rumdl.toml` or
+    `[tool.rumdl]` in `pyproject.toml`, so a repo sets line length and exclusions there. Without
+    one it uses the markdownlint defaults, including 80-column lines. Gitignored files are skipped.
 - **`security`:**
   - **zizmor:** audits the workflows and requires every third-party action to be pinned to a
     commit hash.
@@ -76,6 +81,7 @@ All of them run with the least permission they need. The caller must grant at le
 Dependabot only regenerates a pip-compile lock that was compiled from a `.in` file and is named
 after it: `requirements.in` becomes `requirements.txt`, and `requirements-dev.in` becomes
 `requirements-dev.txt`.
+
 - **Other setups go stale:** a lock compiled from `pyproject.toml`, or named `*.lock`, never gets
   updated. Dependabot bumps ranges in the source file instead.
 - **Warnings:** `init_repo.py` warns about both.
@@ -144,7 +150,10 @@ Each repo that uses these workflows needs:
   `gh api -X PUT repos/OWNER/REPO/vulnerability-alerts`
 - **"Allow GitHub Actions to create and approve pull requests"** (Settings → Actions → General),
   for prepare-release:
-  `gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true`
+
+  ```bash
+  gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
+  ```
 
 `init_repo.py` prints this list after writing the files.
 
@@ -157,7 +166,7 @@ so one pin fixes the whole chain. The actions are:
 
 | Action | Purpose |
 |---|---|
-| `setup-tools` | zizmor, pip-audit, ruff and shellcheck from [`requirements.txt`](actions/setup-tools/requirements.txt), installed with hashes into a private venv |
+| `setup-tools` | zizmor, pip-audit, ruff, shellcheck and rumdl from [`requirements.txt`](actions/setup-tools/requirements.txt), installed with hashes into a private venv |
 | `coverage` | Runs the tests under hash-locked coverage.py and enforces the threshold |
 | `version` | Reads or bumps the version; [`version.py`](actions/version/version.py) runs locally too |
 | `zizmor` | zizmor with [this config](actions/zizmor/zizmor.yml) |

@@ -4,3 +4,4 @@ zizmor
 pip-audit
 ruff
 shellcheck-py
+rumdl
