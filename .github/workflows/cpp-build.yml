@@ -61,14 +61,22 @@ on:
         default: ""
       ccache:
         description: >-
-          Install ccache, route CMake's compilers through it, and keep its cache between runs, so
-          a build recompiles only what changed. Linux runners only.
+          Install ccache, route the compilers through it (CMake's launcher, and ccache's wrappers
+          first on PATH for other build systems), and keep its cache between runs, so a build
+          recompiles only what changed. Linux runners only.
         type: boolean
         default: false
       ccache-max-size:
         description: Largest the ccache directory may grow, e.g. 500M or 2G
         type: string
         default: 500M
+      ccache-sloppiness:
+        description: >-
+          ccache's sloppiness setting. The default lets it cache compiles that use a precompiled
+          header, which it otherwise refuses, and ignores the fresh file times every checkout
+          has. Clang also needs -Xclang -fno-pch-timestamp when building the header.
+        type: string
+        default: pch_defines,time_macros,include_file_mtime,include_file_ctime
       build-command:
         description: Run in bash on every runner (Git Bash on Windows), after any MSVC setup
         type: string
@@ -85,6 +93,17 @@ on:
         description: Newline-separated paths or globs to upload
         type: string
         default: ""
+      parallel:
+        description: >-
+          Build on every core: sets CMAKE_BUILD_PARALLEL_LEVEL, and MAKEFLAGS=-j off Windows,
+          unless the build command's environment already sets them. Plain make runs one job at a
+          time otherwise.
+        type: boolean
+        default: true
+      timeout-minutes:
+        description: How long the job may run before it is cancelled
+        type: number
+        default: 90
 
 permissions: {}
 
@@ -92,7 +111,7 @@ jobs:
   build:
     name: Build
     runs-on: ${{ inputs.runs-on }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
     steps:
@@ -101,6 +120,20 @@ jobs:
           persist-credentials: false
           submodules: ${{ inputs.submodules }}
           fetch-depth: ${{ inputs.fetch-depth }}
+
+      # Not MAKEFLAGS on Windows: nmake reads it too, and rejects -j.
+      - name: Build in parallel
+        if: inputs.parallel
+        shell: bash
+        run: |
+          cores="${NUMBER_OF_PROCESSORS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
+          if [ -z "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]; then
+            echo "CMAKE_BUILD_PARALLEL_LEVEL=$cores" >> "$GITHUB_ENV"
+          fi
+          if [ "$RUNNER_OS" != "Windows" ] && [ -z "${MAKEFLAGS:-}" ]; then
+            echo "MAKEFLAGS=-j$cores" >> "$GITHUB_ENV"
+          fi
+          echo "Building with $cores jobs"
 
       # Lightweight, so it needs no git identity, and the same commit release.yml
       # tags afterwards, so the binary and the release agree.
@@ -148,24 +181,30 @@ jobs:
 
       # CMake reads the launcher variables from the environment when it
       # configures, so any CMake build uses ccache without changing the build
-      # command. CCACHE_BASEDIR makes paths relative, so a hit doesn't depend on
-      # where the runner checked out.
+      # command. Other build systems (make, premake, a configure script) call the
+      # compiler by name, so ccache's wrappers go first on PATH as well; ccache
+      # notices when it is both, and caches each compile once. CCACHE_BASEDIR
+      # makes paths relative, so a hit doesn't depend on where the runner checked
+      # out.
       - name: Set up ccache
         if: inputs.ccache && runner.os == 'Linux'
         shell: bash
         env:
           CCACHE_DIR: ${{ runner.temp }}/ccache
           MAX_SIZE: ${{ inputs.ccache-max-size }}
+          SLOPPINESS: ${{ inputs.ccache-sloppiness }}
         run: |
           sudo apt-get install -y --no-install-recommends ccache
           {
             echo "CCACHE_DIR=$CCACHE_DIR"
             echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
             echo "CCACHE_MAXSIZE=$MAX_SIZE"
+            echo "CCACHE_SLOPPINESS=$SLOPPINESS"
             echo "CCACHE_COMPRESS=true"
             echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
             echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
           } >> "$GITHUB_ENV"
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
 
       # Every run saves under a new key, and restores the newest earlier one by
       # prefix, so the cache follows the code instead of freezing at its first
@@ -191,10 +230,12 @@ jobs:
         run: bash -euo pipefail -c "$BUILD_COMMAND"
 
       # Also after a failed build: whatever did compile is still worth keeping.
+      # Verbose, so uncacheable calls are broken down by reason, such as
+      # "could not use precompiled header".
       - name: ccache statistics
         if: always() && steps.ccache.outcome == 'success'
         shell: bash
-        run: ccache --show-stats
+        run: ccache --show-stats --verbose
 
       - name: Save ccache
         if: always() && steps.ccache.outcome == 'success'
