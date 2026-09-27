@@ -2,3 +2,4 @@
 #   pip-compile --generate-hashes --allow-unsafe -o requirements-dev.txt requirements-dev.in
 pytest
 pyyaml
+clang-format

@@ -1,0 +1,3 @@
+# The clang-format the clang-format action runs. Regenerate requirements.txt after editing:
+#   pip-compile --generate-hashes --allow-unsafe -o requirements.txt requirements.in
+clang-format

@@ -4,6 +4,7 @@ Usage:
     init_repo.py TARGET [--stack python|cpp|shell|data] [--version-file FILE | --no-release]
                         [--ref REF] [--force] [--dry-run]
     init_repo.py TARGET --repin [--ref REF]
+    init_repo.py TARGET --settings [--dry-run]
 
 Writes into TARGET/.github:
     workflows/ci.yml               lint, plus python-ci for Python repos, cpp-build for CMake
@@ -12,7 +13,7 @@ Writes into TARGET/.github:
     workflows/security.yml         zizmor, gitleaks, pip-audit, CodeQL, dependency review,
                                    and a container scan per Dockerfile; also weekly
     workflows/prepare-release.yml  stage one of a release (when a version file is found)
-    workflows/release.yml          stage two of a release, attaching the installers
+    workflows/release.yml          stage two of a release, attesting and attaching the installers
     dependabot.yml                 actions, plus pip, docker, docker-compose, npm and
                                    submodules when present
 
@@ -22,11 +23,16 @@ library is released. Existing files are left alone unless --force is given.
 
 --repin moves every library pin in TARGET's workflows to REF and changes nothing else,
 so customized callers can be upgraded without regenerating them.
+
+--settings turns on, with gh, the GitHub settings TARGET's workflows need: Dependabot
+alerts (and with them the dependency graph) and, when it has prepare-release.yml,
+letting Actions open pull requests. It changes nothing in TARGET itself.
 """
 
 import argparse
 import importlib.util
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -50,13 +56,18 @@ def git(repo, *args):
     return result.stdout.strip()
 
 
+def github_slug(url):
+    """OWNER/REPO from a GitHub remote URL, or None for any other host."""
+    match = re.search(r"github\.com[:/](.+?/.+?)(?:\.git)?$", url)
+    return match.group(1) if match else None
+
+
 def library_name():
     try:
         url = git(LIBRARY_ROOT, "remote", "get-url", "origin")
     except InitError:
         return DEFAULT_LIBRARY
-    match = re.search(r"github\.com[:/](.+?/.+?)(?:\.git)?$", url)
-    return match.group(1) if match else DEFAULT_LIBRARY
+    return github_slug(url) or DEFAULT_LIBRARY
 
 
 def latest_tag():
@@ -430,9 +441,11 @@ updates:
       script: {script}
       version: ${{{{ needs.pending.outputs.version }}}}
       artifact: installer{suffix}""")
-        needs = ", ".join(["check"] + [f"installer{'' if len(scripts) == 1 else f'-{i + 1}'}"
-                                       for i in range(len(scripts))])
+        needs = ", ".join(["check", "attest"] + [f"installer{'' if len(scripts) == 1 else f'-{i + 1}'}"
+                                                 for i in range(len(scripts))])
         installer_jobs = (chr(10) * 2).join(installers)
+        attest_needs = ", ".join(f"installer{'' if len(scripts) == 1 else f'-{i + 1}'}"
+                                 for i in range(len(scripts)))
         return f"""name: Release
 
 # Tags and publishes the version in {version_file} once, after the checks pass, with
@@ -462,6 +475,17 @@ jobs:
       contents: read
 
 {installer_jobs}
+
+  # Signed provenance for the installers, checked with gh attestation verify.
+  attest:
+    name: Attest
+    needs: [{attest_needs}]
+    uses: {self.uses("attest")}
+    permissions:
+      id-token: write
+      attestations: write
+    with:
+      artifacts: installer*
 
   release:
     name: Release
@@ -500,6 +524,36 @@ def repin(target, ref=None, dry_run=False):
     return changed, current, label
 
 
+def settings_commands(target):
+    """The gh calls that turn on what target's workflows need, each with what it's for."""
+    target = Path(target).resolve()
+    slug = github_slug(git(target, "remote", "get-url", "origin"))
+    if slug is None:
+        raise InitError(f"{target}'s origin is not a GitHub repository")
+    commands = [("Dependabot alerts and the dependency graph, for dependency review and Dependabot",
+                 ["gh", "api", "-X", "PUT", f"repos/{slug}/vulnerability-alerts"])]
+    if (target / ".github" / "workflows" / "prepare-release.yml").exists():
+        commands.append(("Actions may open pull requests, for prepare-release",
+                         ["gh", "api", "-X", "PUT", f"repos/{slug}/actions/permissions/workflow",
+                          "-f", "default_workflow_permissions=read",
+                          "-F", "can_approve_pull_request_reviews=true"]))
+    return slug, commands
+
+
+def apply_settings(target, dry_run=False):
+    """Run settings_commands, or with dry_run print them. Returns the repository's slug."""
+    slug, commands = settings_commands(target)
+    for purpose, command in commands:
+        if dry_run:
+            print(f"Would run ({purpose}):\n  {shlex.join(command)}")
+            continue
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise InitError(f"{shlex.join(command)} failed: {(result.stderr or result.stdout).strip()}")
+        print(f"Set: {purpose}")
+    return slug
+
+
 def plan(target, stack=None, version_file=None, release=True, ref=None):
     target = Path(target).resolve()
     if not target.is_dir():
@@ -535,7 +589,19 @@ def main(argv=None):
     parser.add_argument("--force", action="store_true", help="Overwrite existing files")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be written")
     parser.add_argument("--repin", action="store_true", help="Only move existing library pins to --ref")
+    parser.add_argument("--settings", action="store_true",
+                        help="Only turn on the GitHub settings the workflows need, with gh")
     args = parser.parse_args(argv)
+
+    if args.settings:
+        try:
+            slug = apply_settings(args.target, args.dry_run)
+        except InitError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        if not args.dry_run:
+            print(f"{slug} is set up for these workflows")
+        return 0
 
     if args.repin:
         try:
@@ -584,6 +650,7 @@ def main(argv=None):
         print("  - Dependency graph and Dependabot alerts, for dependency review and Dependabot")
         if version_file:
             print("  - \"Allow GitHub Actions to create and approve pull requests\", for prepare-release")
+        print(f"Turn them on with: {Path(__file__).name} {shlex.quote(str(target))} --settings")
 
     others = sorted(p.name for p in (target / ".github" / "workflows").glob("*.y*ml")
                     if f".github/workflows/{p.name}" not in outputs) \

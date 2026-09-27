@@ -2,8 +2,10 @@ name: Lint
 
 # Language-agnostic checks: shellcheck on tracked shell scripts, markdownlint
 # rules on Markdown (rumdl, using the repo's .markdownlint.* or rumdl config when
-# it has one) plus a check that every code fence closes, and every tracked JSON
-# file must parse. Each is skipped when there is nothing to check.
+# it has one) plus a check that every code fence closes, every tracked JSON and
+# TOML file must parse, PSScriptAnalyzer on PowerShell, and clang-format on C
+# and C++ when the repo has a .clang-format. Each is skipped when there is
+# nothing to check.
 on:
   workflow_call:
     inputs:
@@ -14,6 +16,22 @@ on:
         type: boolean
         default: true
       json:
+        type: boolean
+        default: true
+      toml:
+        description: Fail if a tracked *.toml file doesn't parse
+        type: boolean
+        default: true
+      powershell:
+        description: >-
+          PSScriptAnalyzer over tracked PowerShell: the repo's PSScriptAnalyzerSettings.psd1 when
+          it has one, otherwise only errors, such as a script that doesn't parse.
+        type: boolean
+        default: true
+      clang-format:
+        description: >-
+          When the repo has a .clang-format, fail on C and C++ sources it would reformat. Repos
+          without one are skipped.
         type: boolean
         default: true
       yaml:
@@ -60,6 +78,10 @@ jobs:
         if: inputs.json
         uses: $/actions/check-json
 
+      - name: TOML
+        if: inputs.toml
+        uses: $/actions/check-toml
+
       # With the repo's own config, its warnings show as annotations too.
       # Without one, only errors: the relaxed preset's style warnings would
       # flood a repo that never opted into a YAML style.
@@ -77,3 +99,11 @@ jobs:
       - name: Workflows
         if: inputs.actionlint
         uses: $/actions/actionlint
+
+      - name: PowerShell
+        if: inputs.powershell
+        uses: $/actions/psscriptanalyzer
+
+      - name: C and C++ formatting
+        if: inputs.clang-format
+        uses: $/actions/clang-format

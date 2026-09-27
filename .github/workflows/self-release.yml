@@ -1,5 +1,8 @@
 name: Self Release
 
+# Every repo pinned to this library is offered each release, so a release runs
+# all of self-ci.yml first: the tests, the fixtures and the release dry run, not
+# only lint. Pushes that don't change VERSION run nothing past the check.
 on:
   push:
     branches: [main]
@@ -7,11 +10,24 @@ on:
 permissions: {}
 
 jobs:
-  check:
-    name: Check
-    uses: $/.github/workflows/lint.yml
+  pending:
+    name: Pending
+    uses: $/.github/workflows/release-check.yml
     permissions:
       contents: read
+    with:
+      version-file: VERSION
+
+  check:
+    name: Check
+    needs: pending
+    if: needs.pending.outputs.pending == 'true'
+    uses: $/.github/workflows/self-ci.yml
+    # What self-ci.yml's jobs declare: its release dry run and attestation test.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
 
   release:
     name: Release

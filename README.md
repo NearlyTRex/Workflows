@@ -19,7 +19,7 @@ It detects the stack (`python`, `cpp`, `shell` or `data`) and the version file, 
 | `workflows/ci.yml` | `python-ci` for Python repos, `cpp-build` on Linux and Windows for CMake repos, `compose-test` per compose file, `inno-setup` per `.iss` script, and `lint` for every repo |
 | `workflows/security.yml` | `security`, `codeql`, `dependency-review` (PRs) and a `container-scan` per Dockerfile. It also runs weekly |
 | `workflows/prepare-release.yml` | Stage one of a release. Only written when a version file is found |
-| `workflows/release.yml` | Stage two: checks, then tag and publish, building and attaching any Inno Setup installers at the released version |
+| `workflows/release.yml` | Stage two: checks, then tag and publish, building, attesting and attaching any Inno Setup installers at the released version |
 | `dependabot.yml` | Actions, plus pip, docker, docker-compose, npm and git submodules when the repo has them |
 
 Every call is pinned to the commit of this library's latest release, with the tag as a comment:
@@ -44,7 +44,7 @@ All of them run with the least permission they need. The caller must grant at le
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
 | `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100) | `contents: read` |
-| `lint.yml` | `shellcheck` (true), `markdown` (true), `json` (true), `yaml` (true), `actionlint` (true) | `contents: read` |
+| `lint.yml` | `shellcheck` (true), `markdown` (true), `json` (true), `toml` (true), `yaml` (true), `actionlint` (true), `powershell` (true), `clang-format` (true) | `contents: read` |
 | `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files`, `tracked-files` (true), `tracked-files-patterns` | `contents: read` |
 | `codeql.yml` | `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
 | `dependency-review.yml` | `fail-on-severity` (moderate) | `contents: read` |
@@ -52,6 +52,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `prepare-release.yml` | `bump`, `version-file`, `tag-prefix` (v) | `contents: write`, `pull-requests: write` |
 | `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file`, `dry-run` (false) | `contents: write` |
+| `attest.yml` | `artifacts` | `id-token: write`, `attestations: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
 | `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
@@ -73,8 +74,8 @@ All of them run with the least permission they need. The caller must grant at le
       arguments, like `pytest -q`.
     - **Run page:** the coverage table, with missing lines, is also written to the job summary.
 - **`lint`:** shellchecks every tracked shell script, found by its `*.sh` or `*.bash` extension
-  or by a `sh`, `bash`, `dash` or `ksh` shebang, checks that every tracked
-  `*.json` file parses, and lints Markdown with [rumdl](https://github.com/rvben/rumdl), which
+  or by a `sh`, `bash`, `dash` or `ksh` shebang, checks that every tracked `*.json` and `*.toml`
+  file parses, and lints Markdown with [rumdl](https://github.com/rvben/rumdl), which
   implements the markdownlint rules. Each check is skipped when there's nothing to check.
   - **Markdown fences:** `markdown` also fails on a code fence with text after it, or a code
     block that never closes. Under CommonMark neither ends the block, so the prose after it is
@@ -88,6 +89,16 @@ All of them run with the least permission they need. The caller must grant at le
     duplicate keys and trailing spaces.
   - **actionlint:** checks the workflows for expression typos, bad inputs, unknown runner labels
     and YAML mistakes, and shellchecks their `run:` scripts.
+  - **PowerShell:** runs
+    [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) over every tracked `*.ps1`,
+    `*.psm1` and `*.psd1` file, such as an installer smoke test. With the repo's
+    `PSScriptAnalyzerSettings.psd1` everything it reports fails; without one, only errors do, such
+    as a script that doesn't parse or a plaintext `ConvertTo-SecureString`. It uses the
+    PowerShell and PSScriptAnalyzer that GitHub's runner image ships.
+  - **clang-format:** in a repo with a `.clang-format`, fails on any tracked C or C++ source it
+    would reformat, annotating each spot and printing the `clang-format -i` command that fixes
+    them. `.clang-format-ignore` leaves out vendored code. Repos without a `.clang-format` are
+    skipped, since clang-format's default style would flag code that never chose one.
 - **`security`:**
   - **zizmor:** audits the workflows and requires every third-party action to be pinned to a
     commit hash.
@@ -208,6 +219,11 @@ and re-running the workflow retries the whole release.
 - **`notes-file`:** a Markdown file, such as install instructions, placed above the generated
   notes. `{version}`, `{tag}` and `{repository}` in it are filled in.
 - **`checksums`:** also attaches `SHA256SUMS.txt` covering every asset.
+- **Provenance:** run `attest.yml` over the same artifacts between the builds and the release. It
+  signs a record, logged publicly with Sigstore, that each file was built by the repo's workflow
+  from a given commit. Anyone can then check a downloaded asset with
+  `gh attestation verify <file> --repo OWNER/REPO`. It needs a public repo, or GitHub
+  Enterprise Cloud for a private one.
 - **`dry-run`:** does everything except create the tag and the release, even for a version
   that is already tagged: it downloads the assets, renders the notes, writes the checksums and
   prints the `gh` commands it would run. For testing a release setup without releasing.
@@ -236,8 +252,17 @@ jobs:
       version: ${{ needs.check.outputs.version }}
       artifact: installer
 
-  release:
+  attest:
     needs: installer
+    uses: NearlyTRex/Workflows/.github/workflows/attest.yml@<sha> # vX
+    permissions:
+      id-token: write
+      attestations: write
+    with:
+      artifacts: installer
+
+  release:
+    needs: attest
     uses: NearlyTRex/Workflows/.github/workflows/release.yml@<sha> # vX
     permissions:
       contents: write
@@ -264,7 +289,9 @@ Each repo that uses these workflows needs:
   gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
   ```
 
-`init_repo.py` prints this list after writing the files.
+`init_repo.py` prints this list after writing the files. `init_repo.py TARGET --settings` turns
+both on with `gh`, reading the repo from TARGET's `origin`; add `--dry-run` to see the calls first.
+It needs admin rights on the repo.
 
 ## How it fits together
 
@@ -284,7 +311,9 @@ so one pin fixes the whole chain. The actions are:
 | `publish-release` | Tags and publishes a release all or nothing, or prints what it would do (`dry-run`) |
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
 | `build-env` | Parallel jobs and ccache for `cpp-build` |
-| `check-json` | Parses every tracked JSON file |
+| `check-json`, `check-toml` | Parse every tracked JSON or TOML file |
+| `psscriptanalyzer` | PSScriptAnalyzer over tracked PowerShell, errors only unless the repo has settings |
+| `clang-format` | Checks C and C++ formatting when the repo has a `.clang-format`, with its own hash-locked clang-format |
 | `check-tracked-files` | Fails when a file that could hold a credential is tracked |
 | `check-markdown-fences` | Fails on Markdown code fences that don't close, which hide text from the lint rules |
 
@@ -305,11 +334,15 @@ This repo holds itself to the same 100% gate.
 The fixtures in `tests/fixtures` go through `python-ci`, `cpp-build`, `compose-test`,
 `inno-setup` and `container-scan`, and `release.yml` runs as a dry run over the C++ fixture's
 builds, so a change here is tested by the same workflows callers use, release included. The
-library releases itself from `VERSION` through `self-prepare-release.yml` and `self-release.yml`.
+C++ fixture's builds are also attested for real, except on pull requests from forks, which can't
+sign. The library releases itself from `VERSION` through `self-prepare-release.yml` and
+`self-release.yml`, which runs all of `self-ci.yml` before it publishes: every repo pinned here is
+offered the release.
 
 Logic lives in scripts under `actions/`, called from the workflows, rather than inline in YAML,
 so it has tests: Python under the 100% gate, and `build_env.sh`, which also runs on Windows
-runners, through pytest.
+runners, and `analyze.ps1` through pytest. The PowerShell tests are skipped on a machine without
+`pwsh`, but always run in CI.
 
 Dependabot has no Chocolatey ecosystem, so `self-tool-versions.yml` checks the Inno Setup version
 `inno-setup.yml` installs every week, and fails with the version to move to when a newer one is

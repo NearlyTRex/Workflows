@@ -1,0 +1,37 @@
+name: Attest
+
+# Signs build provenance for artifacts that earlier jobs in this run uploaded:
+# a record, logged publicly with Sigstore, that each file was built by this
+# repo's workflow from a given commit. Run it between the builds and
+# release.yml, and anyone can check a downloaded release asset with
+#   gh attestation verify <file> --repo <owner>/<repo>
+# The attestation covers each file's digest, so the copy release.yml attaches
+# verifies too. Public repos only, unless the account has GitHub Enterprise Cloud.
+on:
+  workflow_call:
+    inputs:
+      artifacts:
+        description: Artifact name pattern from earlier jobs in this run, like release.yml's assets
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  attest:
+    name: Attest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write # to sign with a Sigstore certificate for this workflow
+      attestations: write # to store the attestations on the repo
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ inputs.artifacts }}
+          path: ${{ runner.temp }}/attest
+          merge-multiple: true
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/attest/**

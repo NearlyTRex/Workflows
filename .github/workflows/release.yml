@@ -48,8 +48,10 @@ on:
 
 permissions: {}
 
+# Dry runs get a group of their own: only one run waits per group, and a newer
+# one displaces it, so a dry run queued behind a real release could cancel it.
 concurrency:
-  group: release-${{ github.repository }}
+  group: release-${{ github.repository }}${{ inputs.dry-run && '-dry-run' || '' }}
   cancel-in-progress: false
 
 jobs:

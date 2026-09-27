@@ -1,0 +1,10 @@
+name: Check TOML
+description: Fails if any tracked *.toml file is not valid TOML.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/check_toml.py
+      run: python3 "$SCRIPT"
