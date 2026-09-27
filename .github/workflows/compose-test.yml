@@ -1,0 +1,75 @@
+name: Compose Test
+
+# Builds and starts a Docker Compose stack, waits until every service with a
+# healthcheck reports healthy (and, optionally, until a URL answers), then runs
+# the repo's own checks against it. Container logs are printed when anything
+# fails, and the stack is always torn down.
+on:
+  workflow_call:
+    inputs:
+      compose-file:
+        type: string
+        default: compose.yml
+      health-url:
+        description: Also wait for this URL to answer before running the commands
+        type: string
+        default: ""
+      timeout:
+        description: Seconds to wait for the stack to become healthy
+        type: string
+        default: "180"
+      commands:
+        description: Shell commands run against the running stack
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      COMPOSE_FILE: ${{ inputs.compose-file }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and start
+        env:
+          TIMEOUT: ${{ inputs.timeout }}
+        run: docker compose up --detach --build --wait --wait-timeout "$TIMEOUT"
+
+      - name: Wait for the health URL
+        if: inputs.health-url != ''
+        env:
+          URL: ${{ inputs.health-url }}
+          TIMEOUT: ${{ inputs.timeout }}
+        run: |
+          for ((i = 1; i <= TIMEOUT; i++)); do
+            if curl -sf "$URL" > /dev/null; then
+              echo "$URL answered after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::$URL did not answer within ${TIMEOUT}s"
+          exit 1
+
+      - name: Commands
+        if: inputs.commands != ''
+        env:
+          COMMANDS: ${{ inputs.commands }}
+        run: bash -euo pipefail -c "$COMMANDS"
+
+      - name: Logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop
+        if: always()
+        run: docker compose down --volumes

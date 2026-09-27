@@ -43,3 +43,25 @@ jobs:
     uses: $/.github/workflows/lint.yml
     permissions:
       contents: read
+
+  compose:
+    name: Compose
+    uses: $/.github/workflows/compose-test.yml
+    permissions:
+      contents: read
+    with:
+      compose-file: tests/fixtures/compose/compose.yml
+      health-url: http://127.0.0.1:8000/
+      commands: curl -sf http://127.0.0.1:8000/ | grep -q "Directory listing"
+
+  installer:
+    name: Installer
+    uses: $/.github/workflows/inno-setup.yml
+    permissions:
+      contents: read
+    with:
+      script: tests/fixtures/installer/fixture.iss
+      version: 0.0.0-ci
+      output-dir: tests/fixtures/installer/dist
+      smoke-test: tests\fixtures\installer\smoke-test.ps1
+      artifact: fixture-installer

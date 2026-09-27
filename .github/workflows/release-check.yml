@@ -1,0 +1,67 @@
+name: Release Check
+
+# Reports whether the version in the version file still needs releasing, so a
+# caller can build release assets (an installer, binaries) only when release.yml
+# is going to publish them, and stamp them with the right version:
+#
+#   check:  uses release-check.yml
+#   build:  needs: check, if: needs.check.outputs.pending == 'true'
+#   release: needs: build, uses release.yml with assets
+on:
+  workflow_call:
+    inputs:
+      version-file:
+        type: string
+        required: true
+      tag-prefix:
+        type: string
+        default: v
+    outputs:
+      version:
+        description: The version in the version file
+        value: ${{ jobs.check.outputs.version }}
+      tag:
+        description: The tag that version is released under
+        value: ${{ jobs.check.outputs.tag }}
+      pending:
+        description: '"true" when that tag does not exist yet, so release.yml will publish'
+        value: ${{ jobs.check.outputs.pending }}
+
+permissions: {}
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      pending: ${{ steps.check.outputs.pending }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: version
+        uses: $/actions/version
+        with:
+          file: ${{ inputs.version-file }}
+
+      - id: check
+        name: Check for tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag-prefix }}${{ steps.version.outputs.version }}
+        run: |
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh api "repos/$REPO/git/ref/tags/$TAG" --silent 2>/dev/null; then
+            echo "$TAG already exists; nothing to release"
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$TAG is not released yet"
+            echo "pending=true" >> "$GITHUB_OUTPUT"
+          fi

@@ -35,3 +35,13 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+
+  - package-ecosystem: docker-compose
+    directories: ["/tests/fixtures/compose"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker-compose:
+        patterns: ["*"]
