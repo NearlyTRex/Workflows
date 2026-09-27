@@ -1,0 +1,14 @@
+name: PSScriptAnalyzer
+description: >-
+  Runs PSScriptAnalyzer over every tracked PowerShell file (*.ps1, *.psm1,
+  *.psd1). With the repo's PSScriptAnalyzerSettings.psd1, every finding it asks
+  for fails; without one, only errors do, such as a script that doesn't parse.
+  Uses the PowerShell and PSScriptAnalyzer the runner image ships.
+
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      env:
+        SCRIPT: ${{ github.action_path }}/analyze.ps1
+      run: '& $env:SCRIPT'

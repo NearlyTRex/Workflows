@@ -2,15 +2,19 @@ name: Self CI
 
 # This repo's own checks. The reusable workflows are exercised for real: the
 # fixture project goes through python-ci, and the repo itself through lint.
+# self-release.yml calls it too, so a release waits for all of it.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 permissions: {}
 
+# github.workflow is the caller's name when self-release.yml calls this, so its
+# run gets a group of its own and never queues behind, or displaces, this one.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   # Only pull requests: a newer push supersedes their run. On main every run
   # finishes, since each push's secret scan covers only that push's commits.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -91,6 +95,19 @@ jobs:
       test-command: ctest --test-dir build --output-on-failure
       artifact: fixture-cpp-${{ matrix.os }}
       artifact-path: build/fixture_test*
+
+  # Real attestations of the C++ fixture builds, since attesting has no dry run.
+  # A pull request from a fork can't mint the signing token, so it skips this.
+  attest:
+    name: Attest
+    needs: cpp
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: $/.github/workflows/attest.yml
+    permissions:
+      id-token: write
+      attestations: write
+    with:
+      artifacts: fixture-cpp-*
 
   # The release workflow end to end, short of creating anything: downloads the
   # C++ fixture builds as assets, renders the notes, writes the checksums and

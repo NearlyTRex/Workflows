@@ -135,11 +135,15 @@ def test_installer_is_compiled_in_ci_and_attached_on_release(tmp_path):
     assert installer["with"] == {"script": "packaging/app.iss", "version": "0.0.0-ci"}
 
     release = yaml.safe_load(outputs[".github/workflows/release.yml"])["jobs"]
-    assert set(release) == {"check", "pending", "installer", "release"}
+    assert set(release) == {"check", "pending", "installer", "attest", "release"}
     assert "/release-check.yml@" in release["pending"]["uses"]
     assert release["installer"]["if"] == "needs.pending.outputs.pending == 'true'"
     assert release["installer"]["with"]["version"] == "${{ needs.pending.outputs.version }}"
-    assert release["release"]["needs"] == ["check", "installer"]
+    assert "/attest.yml@" in release["attest"]["uses"]
+    assert release["attest"]["needs"] == ["installer"]
+    assert release["attest"]["permissions"] == {"id-token": "write", "attestations": "write"}
+    assert release["attest"]["with"] == {"artifacts": "installer*"}
+    assert release["release"]["needs"] == ["check", "attest", "installer"]
     assert release["release"]["with"]["assets"] == "installer*"
     assert release["release"]["with"]["checksums"] is True
 
@@ -149,7 +153,8 @@ def test_several_installers_each_get_a_job(tmp_path):
     _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
     assert {"installer-1", "installer-2"} <= set(yaml.safe_load(outputs[".github/workflows/ci.yml"])["jobs"])
     release = yaml.safe_load(outputs[".github/workflows/release.yml"])["jobs"]
-    assert release["release"]["needs"] == ["check", "installer-1", "installer-2"]
+    assert release["attest"]["needs"] == ["installer-1", "installer-2"]
+    assert release["release"]["needs"] == ["check", "attest", "installer-1", "installer-2"]
     assert release["installer-2"]["with"]["artifact"] == "installer-2"
 
 
@@ -408,3 +413,71 @@ def test_only_pull_request_runs_are_cancelled(tmp_path):
     for name in [".github/workflows/ci.yml", ".github/workflows/security.yml"]:
         concurrency = yaml.safe_load(outputs[name])["concurrency"]
         assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+
+
+def fake_gh(monkeypatch, fails=False):
+    """Let git through, and record gh calls instead of running them."""
+    calls, real_run = [], subprocess.run
+
+    def run(command, **kwargs):
+        if command[0] != "gh":
+            return real_run(command, **kwargs)
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1 if fails else 0, "", "HTTP 403: Must have admin rights")
+    monkeypatch.setattr(init_repo.subprocess, "run", run)
+    return calls
+
+
+def with_origin(repo, url="git@github.com:Someone/App.git"):
+    subprocess.run(["git", "remote", "add", "origin", url], cwd=repo, check=True)
+    return repo
+
+
+def test_settings_turns_on_what_the_workflows_need(tmp_path, capsys, monkeypatch):
+    repo = with_origin(make_repo(tmp_path, PYTHON))
+    init_repo.main([str(repo), "--ref", "HEAD"])
+    assert "--settings" in capsys.readouterr().out
+    calls = fake_gh(monkeypatch)
+
+    assert init_repo.main([str(repo), "--settings"]) == 0
+    assert calls == [
+        ["gh", "api", "-X", "PUT", "repos/Someone/App/vulnerability-alerts"],
+        ["gh", "api", "-X", "PUT", "repos/Someone/App/actions/permissions/workflow",
+         "-f", "default_workflow_permissions=read", "-F", "can_approve_pull_request_reviews=true"],
+    ]
+    out = capsys.readouterr().out
+    assert "Set: Actions may open pull requests" in out and "Someone/App is set up" in out
+
+
+def test_settings_without_release_workflows(tmp_path, monkeypatch):
+    repo = with_origin(make_repo(tmp_path, {"a.sh": ""}), "https://github.com/Someone/Scripts")
+    calls = fake_gh(monkeypatch)
+    assert init_repo.main([str(repo), "--settings"]) == 0
+    assert calls == [["gh", "api", "-X", "PUT", "repos/Someone/Scripts/vulnerability-alerts"]]
+
+
+def test_settings_dry_run_only_prints(tmp_path, capsys, monkeypatch):
+    repo = with_origin(make_repo(tmp_path, {"a.sh": ""}))
+    calls = fake_gh(monkeypatch)
+    assert init_repo.main([str(repo), "--settings", "--dry-run"]) == 0
+    assert calls == []
+    out = capsys.readouterr().out
+    assert "Would run (Dependabot alerts" in out
+    assert "gh api -X PUT repos/Someone/App/vulnerability-alerts" in out and "is set up" not in out
+
+
+@pytest.mark.parametrize("remote", [None, "https://gitlab.com/Someone/App.git"])
+def test_settings_need_a_github_origin(tmp_path, capsys, monkeypatch, remote):
+    repo = make_repo(tmp_path, {"a.sh": ""})
+    if remote:
+        with_origin(repo, remote)
+    calls = fake_gh(monkeypatch)
+    assert init_repo.main([str(repo), "--settings"]) == 1
+    assert calls == [] and "error:" in capsys.readouterr().err
+
+
+def test_settings_report_what_gh_refused(tmp_path, capsys, monkeypatch):
+    repo = with_origin(make_repo(tmp_path, {"a.sh": ""}))
+    fake_gh(monkeypatch, fails=True)
+    assert init_repo.main([str(repo), "--settings"]) == 1
+    assert "Must have admin rights" in capsys.readouterr().err

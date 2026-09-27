@@ -1,0 +1,40 @@
+name: clang-format
+description: >-
+  When the repo has a .clang-format (or _clang-format) file, fails if any tracked
+  C, C++ or Objective-C++ source isn't formatted the way it asks. Files matched
+  by .clang-format-ignore are skipped. Repos without the file are left alone,
+  since formatting with clang-format's defaults would flag code that never
+  opted into a style.
+
+runs:
+  using: composite
+  steps:
+    - name: Find the style
+      id: style
+      shell: bash
+      run: |
+        if [ -f .clang-format ] || [ -f _clang-format ]; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "No .clang-format file; skipping"
+        fi
+
+    - if: steps.style.outputs.found == 'true'
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      id: python
+      with:
+        python-version: "3.12"
+        update-environment: false
+
+    - name: Check formatting
+      if: steps.style.outputs.found == 'true'
+      shell: bash
+      env:
+        PYTHON: ${{ steps.python.outputs.python-path }}
+        LOCK: ${{ github.action_path }}/requirements.txt
+        SCRIPT: ${{ github.action_path }}/check_format.py
+      run: |
+        venv="$RUNNER_TEMP/clang-format"
+        "$PYTHON" -m venv "$venv"
+        "$venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes --no-deps -r "$LOCK"
+        "$venv/bin/python" "$SCRIPT" "$venv/bin/clang-format"

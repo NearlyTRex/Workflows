@@ -25,6 +25,7 @@ jobs:
     with:
       pip-audit-files: >-
         requirements-dev.txt actions/setup-tools/requirements.txt actions/coverage/requirements.txt
+        actions/clang-format/requirements.txt
         tests/fixtures/python-app/requirements.txt tests/fixtures/python-app/requirements-dev.txt
 
   codeql:
