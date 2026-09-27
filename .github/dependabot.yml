@@ -27,7 +27,7 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: docker
-    directories: ["/actions/gitleaks", "/actions/trivy", "/actions/trivy-config", "/tests/fixtures/python-app"]
+    directories: ["/actions/actionlint", "/actions/gitleaks", "/actions/trivy", "/actions/trivy-config", "/tests/fixtures/python-app"]
     schedule:
       interval: weekly
     cooldown:

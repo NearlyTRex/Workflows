@@ -16,6 +16,16 @@ on:
       json:
         type: boolean
         default: true
+      yaml:
+        description: >-
+          Lint every tracked YAML file with yamllint: the repo's .yamllint config when it has
+          one, otherwise only real errors, such as invalid syntax and duplicate keys.
+        type: boolean
+        default: true
+      actionlint:
+        description: Check the workflows with actionlint, including a shellcheck of their scripts
+        type: boolean
+        default: true
 
 permissions: {}
 
@@ -31,14 +41,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - if: inputs.shellcheck || inputs.markdown
+      - if: inputs.shellcheck || inputs.markdown || inputs.yaml
         uses: $/actions/setup-tools
 
       - name: shellcheck
         if: inputs.shellcheck
-        run: |
-          git ls-files -z '*.sh' '*.bash' \
-            | xargs -0 -r "$RUNNER_TEMP/workflow-tools/bin/shellcheck" --format gcc
+        uses: $/actions/shellcheck
 
       - name: Markdown
         if: inputs.markdown
@@ -51,3 +59,21 @@ jobs:
       - name: JSON
         if: inputs.json
         uses: $/actions/check-json
+
+      # With the repo's own config, its warnings show as annotations too.
+      # Without one, only errors: the relaxed preset's style warnings would
+      # flood a repo that never opted into a YAML style.
+      - name: YAML
+        if: inputs.yaml
+        run: |
+          yamllint="$RUNNER_TEMP/workflow-tools/bin/yamllint"
+          if [ -f .yamllint ] || [ -f .yamllint.yaml ] || [ -f .yamllint.yml ]; then
+            options=()
+          else
+            options=(--no-warnings -d "{extends: relaxed, rules: {line-length: disable}}")
+          fi
+          git ls-files -z '*.yml' '*.yaml' | xargs -0 -r "$yamllint" --format github "${options[@]}"
+
+      - name: Workflows
+        if: inputs.actionlint
+        uses: $/actions/actionlint

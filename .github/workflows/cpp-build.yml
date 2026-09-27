@@ -121,20 +121,6 @@ jobs:
           submodules: ${{ inputs.submodules }}
           fetch-depth: ${{ inputs.fetch-depth }}
 
-      # Not MAKEFLAGS on Windows: nmake reads it too, and rejects -j.
-      - name: Build in parallel
-        if: inputs.parallel
-        shell: bash
-        run: |
-          cores="${NUMBER_OF_PROCESSORS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
-          if [ -z "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]; then
-            echo "CMAKE_BUILD_PARALLEL_LEVEL=$cores" >> "$GITHUB_ENV"
-          fi
-          if [ "$RUNNER_OS" != "Windows" ] && [ -z "${MAKEFLAGS:-}" ]; then
-            echo "MAKEFLAGS=-j$cores" >> "$GITHUB_ENV"
-          fi
-          echo "Building with $cores jobs"
-
       # Lightweight, so it needs no git identity, and the same commit release.yml
       # tags afterwards, so the binary and the release agree.
       - name: Tag locally
@@ -180,32 +166,16 @@ jobs:
           path: ${{ inputs.cache-paths }}
           key: cpp-build-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ hashFiles(inputs.cache-key-files || 'CMakeLists.txt') }}
 
-      # CMake reads the launcher variables from the environment when it
-      # configures, so any CMake build uses ccache without changing the build
-      # command. Other build systems (make, premake, a configure script) call the
-      # compiler by name, so ccache's wrappers go first on PATH as well; ccache
-      # notices when it is both, and caches each compile once. CCACHE_BASEDIR
-      # makes paths relative, so a hit doesn't depend on where the runner checked
-      # out.
-      - name: Set up ccache
-        if: inputs.ccache && runner.os == 'Linux'
-        shell: bash
-        env:
-          CCACHE_DIR: ${{ runner.temp }}/ccache
-          MAX_SIZE: ${{ inputs.ccache-max-size }}
-          SLOPPINESS: ${{ inputs.ccache-sloppiness }}
-        run: |
-          sudo apt-get install -y --no-install-recommends ccache
-          {
-            echo "CCACHE_DIR=$CCACHE_DIR"
-            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
-            echo "CCACHE_MAXSIZE=$MAX_SIZE"
-            echo "CCACHE_SLOPPINESS=$SLOPPINESS"
-            echo "CCACHE_COMPRESS=true"
-            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
-            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
-          } >> "$GITHUB_ENV"
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
+      # Parallel jobs on every core, and ccache on Linux runners: see
+      # actions/build-env.
+      - name: Build environment
+        uses: $/actions/build-env
+        with:
+          parallel: ${{ inputs.parallel }}
+          ccache: ${{ inputs.ccache }}
+          ccache-dir: ${{ runner.temp }}/ccache
+          ccache-max-size: ${{ inputs.ccache-max-size }}
+          ccache-sloppiness: ${{ inputs.ccache-sloppiness }}
 
       # Every run saves under a new key, and restores the newest earlier one by
       # prefix, so the cache follows the code instead of freezing at its first

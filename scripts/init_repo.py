@@ -239,7 +239,9 @@ permissions: {{}}
 
 concurrency:
   group: ci-${{{{ github.ref }}}}
-  cancel-in-progress: true
+  # Only pull requests: a newer push supersedes their run. On main every run
+  # finishes, since each push's secret scan covers only that push's commits.
+  cancel-in-progress: ${{{{ github.event_name == 'pull_request' }}}}
 
 jobs:
 {(chr(10) * 2).join(jobs)}
@@ -297,7 +299,9 @@ permissions: {{}}
 
 concurrency:
   group: security-${{{{ github.ref }}}}
-  cancel-in-progress: true
+  # Only pull requests: a newer push supersedes their run. On main every run
+  # finishes, since each push's secret scan covers only that push's commits.
+  cancel-in-progress: ${{{{ github.event_name == 'pull_request' }}}}
 
 jobs:
 {(chr(10) * 2).join(jobs)}
@@ -337,7 +341,8 @@ jobs:
         return f"""name: Release
 
 # Tags and publishes the version in {version_file} once, after the checks pass.
-# Pushes that don't change the version find the tag already there and do nothing.
+# Pushes that don't change the version find the tag already there, and run
+# nothing else: CI has already tested them.
 on:
   push:
     branches: [main]
@@ -345,8 +350,18 @@ on:
 permissions: {{}}
 
 jobs:
+  pending:
+    name: Pending
+    uses: {self.uses("release-check")}
+    permissions:
+      contents: read
+    with:
+      version-file: {version_file}
+
   check:
     name: Check
+    needs: pending
+    if: needs.pending.outputs.pending == 'true'
     uses: {self.uses(check)}
     permissions:
       contents: read
@@ -422,7 +437,7 @@ updates:
 
 # Tags and publishes the version in {version_file} once, after the checks pass, with
 # the installers built at that version attached. Pushes that don't change the version
-# find the tag already there, and build nothing.
+# find the tag already there, and build and check nothing: CI has already tested them.
 on:
   push:
     branches: [main]
@@ -430,12 +445,6 @@ on:
 permissions: {{}}
 
 jobs:
-  check:
-    name: Check
-    uses: {self.uses(check)}
-    permissions:
-      contents: read
-
   pending:
     name: Pending
     uses: {self.uses("release-check")}
@@ -443,6 +452,14 @@ jobs:
       contents: read
     with:
       version-file: {version_file}
+
+  check:
+    name: Check
+    needs: pending
+    if: needs.pending.outputs.pending == 'true'
+    uses: {self.uses(check)}
+    permissions:
+      contents: read
 
 {installer_jobs}
 

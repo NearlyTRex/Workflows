@@ -1,0 +1,23 @@
+name: Scan range
+description: >-
+  Works out which commits a secret scan needs to cover: a pull request's or a
+  push's new commits, or the whole history. Needs a checkout with fetch-depth 0.
+
+outputs:
+  log-opts:
+    description: A git log range such as BASE..HEAD, or empty for the whole history
+    value: ${{ steps.range.outputs.log-opts }}
+
+runs:
+  using: composite
+  steps:
+    - id: range
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/scan_range.py
+        EVENT: ${{ github.event_name }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        BEFORE: ${{ github.event.before }}
+        AFTER: ${{ github.sha }}
+      run: python3 "$SCRIPT"

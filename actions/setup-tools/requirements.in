@@ -5,3 +5,4 @@ pip-audit
 ruff
 shellcheck-py
 rumdl
+yamllint

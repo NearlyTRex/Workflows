@@ -1,0 +1,15 @@
+name: actionlint
+description: >-
+  Checks the workflows for expression typos, bad inputs, unknown runner labels
+  and YAML mistakes, and shellchecks their run: scripts. Uses of this library's
+  same-repository $/ syntax, which actionlint doesn't know yet, are not reported.
+
+runs:
+  using: docker
+  image: Dockerfile
+  args:
+    - -color
+    - -ignore
+    - 'specifying action "\$/'
+    - -ignore
+    - 'reusable workflow call "\$/'

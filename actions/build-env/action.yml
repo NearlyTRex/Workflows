@@ -1,0 +1,40 @@
+name: Build environment
+description: >-
+  Sets up the environment for a C/C++ build: parallel jobs on every core, and
+  optionally ccache (Linux runners). See build_env.sh.
+
+inputs:
+  parallel:
+    required: false
+    default: "true"
+  ccache:
+    required: false
+    default: "false"
+  ccache-dir:
+    required: false
+    default: ""
+  ccache-max-size:
+    required: false
+    default: 500M
+  ccache-sloppiness:
+    required: false
+    default: pch_defines,time_macros,include_file_mtime,include_file_ctime
+
+runs:
+  using: composite
+  steps:
+    - name: Install ccache
+      if: inputs.ccache == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get install -y --no-install-recommends ccache
+
+    - name: Export the build environment
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/build_env.sh
+        PARALLEL: ${{ inputs.parallel }}
+        CCACHE: ${{ inputs.ccache }}
+        CCACHE_DIR: ${{ inputs.ccache-dir }}
+        MAX_SIZE: ${{ inputs.ccache-max-size }}
+        SLOPPINESS: ${{ inputs.ccache-sloppiness }}
+      run: bash "$SCRIPT"
