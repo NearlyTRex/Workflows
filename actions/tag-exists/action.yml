@@ -1,0 +1,31 @@
+name: Tag exists
+description: >-
+  Reports whether a tag exists in the repository on GitHub, as the output
+  exists ("true" or "false"). See tag_exists.py.
+
+inputs:
+  tag:
+    required: true
+  repository:
+    required: false
+    default: ${{ github.repository }}
+  token:
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  exists:
+    description: '"true" when the tag exists'
+    value: ${{ steps.check.outputs.exists }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/tag_exists.py
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repository }}
+        TAG: ${{ inputs.tag }}
+      run: python3 "$SCRIPT"

@@ -32,25 +32,8 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        SCRIPT: ${{ github.action_path }}/run_coverage.py
         TEST_COMMAND: ${{ inputs.test-command }}
         FAIL_UNDER: ${{ inputs.fail-under }}
-      run: |
-        if [ -f .coveragerc ] || grep -qs '^\[tool\.coverage' pyproject.toml; then
-          options=()
-        else
-          options=(--branch --source=.)
-        fi
-        read -ra command <<< "$TEST_COMMAND"
-        python -m coverage run "${options[@]}" -m "${command[@]}"
-        status=0
-        python -m coverage report --fail-under="$FAIL_UNDER" --show-missing --skip-covered || status=$?
-        # The same table on the run page, so a failing gate shows what is missing
-        # without opening the log.
-        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-          {
-            echo "### Coverage (minimum $FAIL_UNDER%)"
-            echo
-            python -m coverage report --format=markdown --show-missing --skip-covered
-          } >> "$GITHUB_STEP_SUMMARY"
-        fi
-        exit "$status"
+      # The project's Python, which has coverage.py and the tests' dependencies.
+      run: python "$SCRIPT"

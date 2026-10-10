@@ -89,10 +89,21 @@ jobs:
       # Linux only; the Windows leg checks it is skipped cleanly.
       ccache: true
       cache-key: fixture-cpp
+      # Skipped on Windows, like ccache.
+      apt-packages: clang-tidy
+      rolling-cache-paths: .tidy-cache
+      # ci-phase on both runners, so its launcher is tested on Windows too.
+      # ci-clang-tidy runs twice on Linux: the second run must find every file
+      # in the cache it just filled.
       build-command: |
-        cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-        cmake --build build --parallel
-      test-command: ctest --test-dir build --output-on-failure
+        ci-phase Configure cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        ci-phase Build cmake --build build --parallel
+        if [ "$RUNNER_OS" = Linux ]; then
+          ci-phase Tidy ci-clang-tidy -p build --cache-dir .tidy-cache
+          ci-clang-tidy -p build --cache-dir .tidy-cache | tee tidy.log
+          grep -q ", 0 checked, 0 failed" tidy.log
+        fi
+      test-command: ci-phase Test ctest --test-dir build --output-on-failure
       artifact: fixture-cpp-${{ matrix.os }}
       artifact-path: build/fixture_test*
 

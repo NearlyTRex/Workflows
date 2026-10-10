@@ -1,24 +1,31 @@
-"""build_env.sh, run as the action runs it: bash with the runner's variables."""
+"""build_env.py, given the runner's variables as the action passes them."""
 
+import importlib.util
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parent.parent / "actions" / "build-env" / "build_env.sh"
+ROOT = Path(__file__).resolve().parent.parent
+ACTION = ROOT / "actions" / "build-env"
+spec = importlib.util.spec_from_file_location("build_env", ACTION / "build_env.py")
+build_env = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(build_env)
 
 
 def read_env(path):
     return dict(line.split("=", 1) for line in path.read_text().splitlines()) if path.exists() else {}
 
 
-def run(tmp_path, **env):
+def run(tmp_path, capsys, **env):
     github_env, github_path = tmp_path / "env", tmp_path / "path"
-    base = {"PATH": "/usr/bin:/bin", "GITHUB_ENV": str(github_env), "GITHUB_PATH": str(github_path),
-            "GITHUB_WORKSPACE": "/work", "NUMBER_OF_PROCESSORS": "4"}
-    result = subprocess.run(["bash", str(SCRIPT)], env={**base, **env}, capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
-    return read_env(github_env), github_path.read_text().splitlines() if github_path.exists() else [], result.stdout
+    base = {"GITHUB_ENV": str(github_env), "GITHUB_PATH": str(github_path), "GITHUB_WORKSPACE": "/work",
+            "NUMBER_OF_PROCESSORS": "4", "RUNNER_TEMP": str(tmp_path / "temp")}
+    assert build_env.main({**base, **env}) == 0
+    path = github_path.read_text().splitlines() if github_path.exists() else []
+    return read_env(github_env), path, capsys.readouterr().out
 
 
 CCACHE = {"CCACHE": "true", "CCACHE_DIR": "/tmp/cc", "MAX_SIZE": "1G", "SLOPPINESS": "time_macros"}
@@ -29,33 +36,35 @@ CCACHE = {"CCACHE": "true", "CCACHE_DIR": "/tmp/cc", "MAX_SIZE": "1G", "SLOPPINE
     ("macOS", {"CMAKE_BUILD_PARALLEL_LEVEL": "4", "MAKEFLAGS": "-j4"}),
     ("Windows", {"CMAKE_BUILD_PARALLEL_LEVEL": "4"}),       # nmake rejects -j
 ])
-def test_parallel(tmp_path, os_name, expected):
-    env, path, out = run(tmp_path, PARALLEL="true", RUNNER_OS=os_name)
+def test_parallel(tmp_path, capsys, os_name, expected):
+    env, path, out = run(tmp_path, capsys, PARALLEL="true", RUNNER_OS=os_name)
     assert env == expected and path == []
     assert "Building with 4 jobs" in out
 
 
-def test_parallel_keeps_what_the_caller_set(tmp_path):
-    env, _, _ = run(tmp_path, PARALLEL="true", RUNNER_OS="Linux", MAKEFLAGS="-j2",
+def test_parallel_keeps_what_the_caller_set(tmp_path, capsys):
+    env, _, _ = run(tmp_path, capsys, PARALLEL="true", RUNNER_OS="Linux", MAKEFLAGS="-j2",
                     CMAKE_BUILD_PARALLEL_LEVEL="3")
     assert env == {}
 
 
-def test_parallel_falls_back_to_getconf(tmp_path):
-    github_env = tmp_path / "env"
-    subprocess.run(["bash", str(SCRIPT)], check=True, env={
-        "PATH": "/usr/bin:/bin", "GITHUB_ENV": str(github_env), "PARALLEL": "true", "RUNNER_OS": "Linux"})
-    cores = subprocess.run(["getconf", "_NPROCESSORS_ONLN"], capture_output=True, text=True).stdout.strip()
-    assert f"CMAKE_BUILD_PARALLEL_LEVEL={cores}" in github_env.read_text()
+def test_parallel_falls_back_to_the_core_count(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(os, "cpu_count", lambda: 6)
+    env, _, _ = run(tmp_path, capsys, PARALLEL="true", RUNNER_OS="Linux", NUMBER_OF_PROCESSORS="")
+    assert env["CMAKE_BUILD_PARALLEL_LEVEL"] == "6"
+    monkeypatch.setattr(os, "cpu_count", lambda: None)
+    (tmp_path / "env").unlink()
+    env, _, _ = run(tmp_path, capsys, PARALLEL="true", RUNNER_OS="Linux", NUMBER_OF_PROCESSORS="")
+    assert env["CMAKE_BUILD_PARALLEL_LEVEL"] == "2"
 
 
-def test_nothing_when_both_are_off(tmp_path):
-    env, path, out = run(tmp_path, PARALLEL="false", CCACHE="false", RUNNER_OS="Linux")
+def test_nothing_when_all_are_off(tmp_path, capsys):
+    env, path, out = run(tmp_path, capsys, PARALLEL="false", CCACHE="false", RUNNER_OS="Linux")
     assert env == {} and path == [] and out == ""
 
 
-def test_ccache_on_linux(tmp_path):
-    env, path, _ = run(tmp_path, RUNNER_OS="Linux", **CCACHE)
+def test_ccache_on_linux(tmp_path, capsys):
+    env, path, _ = run(tmp_path, capsys, RUNNER_OS="Linux", **CCACHE)
     assert env == {
         "CCACHE_DIR": "/tmp/cc", "CCACHE_BASEDIR": "/work", "CCACHE_MAXSIZE": "1G",
         "CCACHE_SLOPPINESS": "time_macros", "CCACHE_COMPRESS": "true",
@@ -64,7 +73,37 @@ def test_ccache_on_linux(tmp_path):
     assert path == ["/usr/lib/ccache"]
 
 
-def test_ccache_is_skipped_off_linux(tmp_path):
-    env, path, out = run(tmp_path, RUNNER_OS="Windows", **CCACHE)
+def test_ccache_wrappers_can_be_elsewhere(tmp_path, capsys):
+    _, path, _ = run(tmp_path, capsys, RUNNER_OS="Linux", CCACHE_WRAPPERS="/opt/ccache", **CCACHE)
+    assert path == ["/opt/ccache"]
+
+
+@pytest.mark.parametrize("os_name,named", [("Windows", "Windows"), ("", "this runner")])
+def test_ccache_is_skipped_off_linux(tmp_path, capsys, os_name, named):
+    env, path, out = run(tmp_path, capsys, RUNNER_OS=os_name, **CCACHE)
     assert env == {} and path == []
-    assert "Linux runners only" in out
+    assert f"Linux runners only; not on {named}" in out
+
+
+def test_tools_are_put_on_path(tmp_path, capsys):
+    env, path, out = run(tmp_path, capsys, TOOLS=str(ACTION), RUNNER_OS="Linux")
+    bin_dir = tmp_path / "temp" / "ci-tools"
+    assert env == {} and path == [str(bin_dir)]
+    assert f"ci-phase and ci-clang-tidy in {bin_dir}" in out
+    # The launchers run the scripts with this Python.
+    phase = subprocess.run([str(bin_dir / "ci-phase"), "Check", sys.executable, "-c", "print('ran')"],
+                           capture_output=True, text=True, env={"PATH": os.environ["PATH"]})
+    assert phase.returncode == 0 and "::group::Check\nran\n::endgroup::" in phase.stdout
+    tidy = subprocess.run([str(bin_dir / "ci-clang-tidy"), "--help"], capture_output=True, text=True)
+    assert tidy.returncode == 0 and "compile_commands.json" in tidy.stdout
+
+
+def test_reads_the_process_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_ENV", str(tmp_path / "env"))
+    monkeypatch.setenv("PARALLEL", "true")
+    monkeypatch.setenv("NUMBER_OF_PROCESSORS", "3")
+    monkeypatch.delenv("CMAKE_BUILD_PARALLEL_LEVEL", raising=False)
+    monkeypatch.delenv("TOOLS", raising=False)
+    monkeypatch.delenv("CCACHE", raising=False)
+    assert build_env.main() == 0
+    assert read_env(tmp_path / "env")["CMAKE_BUILD_PARALLEL_LEVEL"] == "3"

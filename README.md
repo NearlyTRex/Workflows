@@ -54,7 +54,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file`, `dry-run` (false) | `contents: write` |
 | `attest.yml` | `artifacts` | `id-token: write`, `attestations: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
 - **`python-ci`:**
@@ -168,10 +168,41 @@ All of them run with the least permission they need. The caller must grant at le
   with `-Xclang=-fno-pch-timestamp`: otherwise each rebuilt `.pch` differs from the last, and
   every file that includes it misses. The stats list any calls still uncacheable, and why.
 
+  `rolling-cache-paths` gives other directories the same treatment as the ccache: saved after
+  every run that isn't cancelled, and the newest restored. `cache-paths` is restored only while
+  `cache-key-files` are unchanged and saved only by a passing run, so it suits fetched
+  dependencies; `rolling-cache-paths` suits caches that follow the code.
+
+  The build and test commands also have two commands on `PATH` (Linux and macOS; `ci-phase` on
+  Windows too):
+
+  - **`ci-phase NAME COMMAND...`** runs one phase of the step as a collapsible log group, and adds
+    NAME and its time to a table on the run's summary page, so a slow build shows where the time
+    went. A failing phase is marked and keeps its exit status.
+  - **`ci-clang-tidy -p BUILD_DIR`** runs clang-tidy over `compile_commands.json`: by default every
+    file under the checkout and outside BUILD_DIR, or those `--files` matches, less `--exclude`
+    (regexes), with `--config-file` for one config throughout. Each file prints as it finishes,
+    every diagnostic is an error annotation, and the run's summary gets the totals and the slowest
+    files. With `--cache-dir` in `rolling-cache-paths`, a file is skipped while its preprocessed
+    source (comments kept, so a `NOLINT` edit counts), command line, config and the clang-tidy
+    version are what an earlier clean run saw, so only what a change touches is checked again.
+    Failures are never cached.
+
+  ```yaml
+  with:
+    apt-packages: cmake clang clang-tidy ninja-build
+    rolling-cache-paths: .tidy-cache
+    build-command: |
+      ci-phase Configure cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      ci-phase Build cmake --build build
+      ci-phase Tidy ci-clang-tidy -p build --cache-dir .tidy-cache
+  ```
+
   A release build that stamps `git describe` into the binary should pass `local-tag:` with
   `release-check`'s `tag` output. `release.yml` only tags the commit once the builds are done, so
   otherwise the binary names a bare commit instead of the release. The tag is created in the
   build's checkout only and never pushed.
+
 - **`inno-setup`:** compiles a Windows installer on `windows-latest`, passing `version` as
   `/DAppVersion=...`, then runs the repo's `smoke-test` PowerShell and, with `artifact`, uploads the
   `.exe` for `release.yml` to attach. Run it in CI with a placeholder version so a broken script
@@ -314,8 +345,11 @@ so one pin fixes the whole chain. The actions are:
 | `gitleaks`, `trivy`, `trivy-config`, `actionlint` | Container actions. Their `Dockerfile` pins the image by digest |
 | `scan-range` | Works out which commits a secret scan covers: a pull request's, a push's, or the whole history |
 | `publish-release` | Tags and publishes a release all or nothing, or prints what it would do (`dry-run`) |
+| `tag-exists` | Whether a tag exists on GitHub, for `release-check` and `release` |
+| `release-pr` | Commits the bumped version on `release/<tag>` and opens or updates its pull request |
+| `wait-for-url` | Waits for a URL to answer below 400, by the clock, for `compose-test` |
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
-| `build-env` | Parallel jobs and ccache for `cpp-build` |
+| `build-env` | Parallel jobs, ccache, and `ci-phase` and `ci-clang-tidy` on `PATH` for `cpp-build` |
 | `ccache-stats` | Prints ccache's statistics and warns when `ccache-max-size` was too small |
 | `check-json`, `check-toml` | Parse every tracked JSON or TOML file |
 | `psscriptanalyzer` | PSScriptAnalyzer over tracked PowerShell, errors only unless the repo has settings |
@@ -365,9 +399,9 @@ temporary worktree. The commit must be pushed first, and release workflows don't
 only run on the default branch.
 
 Logic lives in scripts under `actions/`, called from the workflows, rather than inline in YAML,
-so it has tests: Python under the 100% gate, and `build_env.sh`, which also runs on Windows
-runners, `ccache_stats.sh` and `analyze.ps1` through pytest. The PowerShell tests are skipped on
-a machine without `pwsh`, but always run in CI.
+so it has tests: Python under the 100% gate, and `analyze.ps1` through pytest. The PowerShell
+tests are skipped on a machine without `pwsh`, but always run in CI. A script is Python unless it
+must run where Python may not be, such as inside a tool's container.
 
 Dependabot has no Chocolatey ecosystem, so `self-tool-versions.yml` checks the Inno Setup version
 `inno-setup.yml` installs every week, and fails with the version to move to when a newer one is
