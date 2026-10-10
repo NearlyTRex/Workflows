@@ -56,6 +56,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
 | `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
+| `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `node-version`, `timeout-minutes` (60). Outputs `changed` | `contents: write` |
 
 - **`python-ci`:**
   - **Install:** from the hash-locked `lock-file` when there is one, otherwise with
@@ -208,6 +209,36 @@ All of them run with the least permission they need. The caller must grant at le
   `.exe` for `release.yml` to attach. Run it in CI with a placeholder version so a broken script
   fails the pull request rather than the release. Installing Inno Setup from Chocolatey is
   retried, since the community feed sometimes rate-limits or times out.
+- **`scheduled-update`:** for repos that publish generated data, such as an export refreshed
+  daily. It runs `command` and commits whatever it changed under `paths` to the branch the run
+  started from, as `github-actions[bot]`. A run that changes nothing makes no commit.
+  - **Two jobs:** `command` runs with read-only access, and `diff-paths` writes what it changed
+    as a patch. A second job, which runs none of the repo's code, applies it with
+    `commit-patch` and pushes, so a compromised dependency of the command never holds a token
+    that can write.
+  - **Moved branch:** the changes are applied to the branch's tip. If a push since the command
+    started touched the same lines, the run fails and the next one starts from the new tip.
+  - **Pushes don't trigger workflows:** GitHub doesn't start runs for a push made with the
+    workflow token, so the data commits don't set off CI.
+  - **`node-version`:** sets up Node.js with npm's download cache, which needs a
+    `package-lock.json`.
+
+  ```yaml
+  on:
+    schedule:
+      - cron: "0 0 * * *"
+    workflow_dispatch:
+
+  jobs:
+    update:
+      uses: NearlyTRex/Workflows/.github/workflows/scheduled-update.yml@<sha> # vX
+      permissions:
+        contents: write
+      with:
+        node-version: "24"
+        command: npm ci && node generate.js
+        paths: data/
+  ```
 
 ### Python dependency locks
 
@@ -347,6 +378,8 @@ so one pin fixes the whole chain. The actions are:
 | `publish-release` | Tags and publishes a release all or nothing, or prints what it would do (`dry-run`) |
 | `tag-exists` | Whether a tag exists on GitHub, for `release-check` and `release` |
 | `release-pr` | Commits the bumped version on `release/<tag>` and opens or updates its pull request |
+| `diff-paths` | Stages the changes under some paths and writes them as a patch, for `scheduled-update` |
+| `commit-patch` | Applies a `diff-paths` patch, commits it as `github-actions[bot]` and pushes it |
 | `wait-for-url` | Waits for a URL to answer below 400, by the clock, for `compose-test` |
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
 | `build-env` | Parallel jobs, ccache, and `ci-phase` and `ci-clang-tidy` on `PATH` for `cpp-build` |

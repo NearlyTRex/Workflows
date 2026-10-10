@@ -51,6 +51,6 @@ def test_runs_as_a_script(tmp_path, monkeypatch):
     fake = tmp_path / "ccache"
     fake.write_text("#!/bin/sh\n")
     fake.chmod(0o755)
-    result = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
+    result = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True, check=False,
                             env={**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"})
     assert result.returncode == 0, result.stderr

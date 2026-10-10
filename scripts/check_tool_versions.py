@@ -57,7 +57,7 @@ def latest_stable(get=fetch, url=FEED):
 
 
 def pinned(workflow=INNO_WORKFLOW):
-    match = re.search(r'inno-setup-version:.*?default:\s*"([^"]+)"', workflow.read_text(), re.S)
+    match = re.search(r'inno-setup-version:.*?default:\s*"([^"]+)"', workflow.read_text(), re.DOTALL)
     return match.group(1)
 
 

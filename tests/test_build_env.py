@@ -92,9 +92,9 @@ def test_tools_are_put_on_path(tmp_path, capsys):
     assert f"ci-phase and ci-clang-tidy in {bin_dir}" in out
     # The launchers run the scripts with this Python.
     phase = subprocess.run([str(bin_dir / "ci-phase"), "Check", sys.executable, "-c", "print('ran')"],
-                           capture_output=True, text=True, env={"PATH": os.environ["PATH"]})
+                           capture_output=True, text=True, check=False, env={"PATH": os.environ["PATH"]})
     assert phase.returncode == 0 and "::group::Check\nran\n::endgroup::" in phase.stdout
-    tidy = subprocess.run([str(bin_dir / "ci-clang-tidy"), "--help"], capture_output=True, text=True)
+    tidy = subprocess.run([str(bin_dir / "ci-clang-tidy"), "--help"], capture_output=True, text=True, check=False)
     assert tidy.returncode == 0 and "compile_commands.json" in tidy.stdout
 
 

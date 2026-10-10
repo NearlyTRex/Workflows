@@ -91,8 +91,8 @@ def test_opens_a_pull_request(fakes, capsys):
     assert calls[1:6] == COMMITS
     assert calls[6] == VIEW
     assert calls[7] == ["gh", "pr", "create", "--base", "main", "--head", "release/v1.2.0", "--title", "Release v1.2.0",
-                        "--body", "Sets the version to 1.2.0 in `VERSION`. Merging this tags v1.2.0 and publishes "
-                                  "the release."]
+                        "--body", ("Sets the version to 1.2.0 in `VERSION`. Merging this tags v1.2.0 and publishes "
+                                   "the release.")]
 
 
 @pytest.mark.parametrize("url", ["https://github.com/owner/repo/pull/7", ""])

@@ -22,7 +22,7 @@ def main(argv=None):
     unformatted, failed = set(), False
     for start in range(0, len(paths), BATCH):
         result = subprocess.run([clang_format, "--dry-run", "--Werror", "--style=file", *paths[start:start + BATCH]],
-                                capture_output=True, text=True)
+                                capture_output=True, text=True, check=False)
         if result.returncode == 0:
             continue
         failed = True

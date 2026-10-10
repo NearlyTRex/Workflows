@@ -46,7 +46,7 @@ class CanaryError(Exception):
 
 
 def run(command, cwd=None):
-    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
+    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise CanaryError(f"{' '.join(command)} failed: {(result.stderr or result.stdout).strip()}")
     return result.stdout.strip()
@@ -77,7 +77,7 @@ def repo_path(name):
 
 def default_branch(repo):
     listed = run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=repo)
-    if match := re.search(r"^ref: refs/heads/(\S+)\tHEAD$", listed, re.M):
+    if match := re.search(r"^ref: refs/heads/(\S+)\tHEAD$", listed, re.MULTILINE):
         return match[1]
     raise CanaryError(f"can't tell {repo.name}'s default branch")
 
@@ -106,8 +106,8 @@ def push_canary(repo, ref, sha):
                cwd=repo):
         run(["gh", "pr", "create", "--draft", "--base", base, "--head", branch,
              "--title", f"Workflows canary: {ref}",
-             "--body", f"Runs this repo's workflows against {init_repo.library_name()}@{sha} ({ref}) before it "
-                       "is released. Not for merging: `canary.py --cleanup` deletes it."], cwd=repo)
+             "--body", (f"Runs this repo's workflows against {init_repo.library_name()}@{sha} ({ref}) before it "
+                        "is released. Not for merging: `canary.py --cleanup` deletes it.")], cwd=repo)
     if dispatchable:
         run(["gh", "workflow", "run", "security.yml", "--ref", branch], cwd=repo)
     return branch, commit, dispatchable
