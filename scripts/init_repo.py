@@ -2,7 +2,7 @@
 
 Usage:
     init_repo.py TARGET [--stack python|cpp|shell|data] [--version-file FILE | --no-release]
-                        [--ref REF] [--force] [--dry-run]
+                        [--assignee USER ... | --no-assignee] [--ref REF] [--force] [--dry-run]
     init_repo.py TARGET --repin [--ref REF]
     init_repo.py TARGET --settings [--dry-run]
 
@@ -15,7 +15,10 @@ Writes into TARGET/.github:
     workflows/prepare-release.yml  stage one of a release (when a version file is found)
     workflows/release.yml          stage two of a release, attesting and attaching the installers
     dependabot.yml                 actions, plus pip, docker, docker-compose, npm and
-                                   submodules when present
+                                   submodules when present; its pull requests are assigned
+                                   to --assignee, or by default to the owner of TARGET's
+                                   GitHub origin (--no-assignee for none, as for an
+                                   organization, which can't be assigned)
 
 Every library reference is pinned to the commit of REF (default: this repo's latest
 tag) with the tag as a comment, which is what lets Dependabot bump the pin when the
@@ -60,6 +63,15 @@ def github_slug(url):
     """OWNER/REPO from a GitHub remote URL, or None for any other host."""
     match = re.search(r"github\.com[:/](.+?/.+?)(?:\.git)?$", url)
     return match.group(1) if match else None
+
+
+def origin_owner(target):
+    """The owner of target's GitHub origin, or None without one."""
+    try:
+        slug = github_slug(git(target, "remote", "get-url", "origin"))
+    except InitError:
+        return None
+    return slug.split("/")[0] if slug else None
 
 
 def library_name():
@@ -387,7 +399,7 @@ jobs:
       version-file: {version_file}
 """
 
-    def dependabot(self, stack, files, images):
+    def dependabot(self, stack, files, images, assignees=()):
         names = {Path(f).name for f in files}
         updates = [("github-actions", ["/"], "actions")]
         if stack == "python" or any(n.endswith(".lock") or n.startswith("requirements") for n in names):
@@ -403,6 +415,9 @@ jobs:
             updates.append(("docker-compose", sorted({directory_of(f) for f in compose}), "docker-compose"))
         if ".gitmodules" in names:
             updates.append(("gitsubmodule", ["/"], "submodules"))
+        assign = ""
+        if assignees:
+            assign = "\n    assignees: [" + ", ".join(f'"{a}"' for a in assignees) + "]"
         blocks = []
         for ecosystem, directories, group in updates:
             dirs = ", ".join(f'"{d}"' for d in directories)
@@ -413,7 +428,7 @@ jobs:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 7
+      default-days: 7{assign}
     groups:
       {group}:
         patterns: ["*"]""")
@@ -554,10 +569,14 @@ def apply_settings(target, dry_run=False):
     return slug
 
 
-def plan(target, stack=None, version_file=None, release=True, ref=None):
+def plan(target, stack=None, version_file=None, release=True, ref=None, assignees=None):
+    """assignees None means the owner of target's GitHub origin, when it has one."""
     target = Path(target).resolve()
     if not target.is_dir():
         raise InitError(f"{target} is not a directory")
+    if assignees is None:
+        owner = origin_owner(target)
+        assignees = [owner] if owner else []
     files = tracked_files(target)
     stack = stack or detect_stack(files)
     if release and version_file is None:
@@ -570,7 +589,7 @@ def plan(target, stack=None, version_file=None, release=True, ref=None):
     outputs = {
         ".github/workflows/ci.yml": renderer.ci(stack, files),
         ".github/workflows/security.yml": renderer.security(stack, hashed_requirement_files(target, files), images),
-        ".github/dependabot.yml": renderer.dependabot(stack, files, images),
+        ".github/dependabot.yml": renderer.dependabot(stack, files, images, assignees),
     }
     if release and version_file:
         outputs[".github/workflows/prepare-release.yml"] = renderer.prepare_release(version_file)
@@ -586,6 +605,11 @@ def main(argv=None):
     parser.add_argument("--version-file", help="File holding the version (default: detected)")
     parser.add_argument("--no-release", action="store_true", help="Skip the release workflows")
     parser.add_argument("--ref", help="Library tag or commit to pin (default: latest tag)")
+    assignee = parser.add_mutually_exclusive_group()
+    assignee.add_argument("--assignee", action="append", metavar="USER",
+                          help="Assign Dependabot's pull requests to USER; repeatable "
+                               "(default: the owner of TARGET's GitHub origin)")
+    assignee.add_argument("--no-assignee", action="store_true", help="Leave Dependabot's pull requests unassigned")
     parser.add_argument("--force", action="store_true", help="Overwrite existing files")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be written")
     parser.add_argument("--repin", action="store_true", help="Only move existing library pins to --ref")
@@ -619,7 +643,8 @@ def main(argv=None):
 
     try:
         target, stack, version_file, outputs, warnings = plan(
-            args.target, args.stack, args.version_file, not args.no_release, args.ref)
+            args.target, args.stack, args.version_file, not args.no_release, args.ref,
+            [] if args.no_assignee else args.assignee)
     except (InitError, version_tool.VersionError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

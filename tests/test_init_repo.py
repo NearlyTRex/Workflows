@@ -182,6 +182,35 @@ def test_compose_images_get_dependabot(tmp_path):
     assert ecosystems["docker"] == ["/docker"]
 
 
+def dependabot_assignees(outputs):
+    return [u.get("assignees") for u in yaml.safe_load(outputs[".github/dependabot.yml"])["updates"]]
+
+
+def test_dependabot_assigns_the_origins_owner(tmp_path):
+    repo = make_repo(tmp_path, PYTHON)
+    subprocess.run(["git", "remote", "add", "origin", "git@github.com:Someone/App.git"], cwd=repo, check=True)
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    assert dependabot_assignees(outputs) == [["Someone"]] * 3
+
+
+@pytest.mark.parametrize("remote", [None, "https://gitlab.com/Someone/App.git"])
+def test_dependabot_is_unassigned_without_a_github_origin(tmp_path, remote):
+    repo = make_repo(tmp_path, {"a.sh": ""})
+    if remote:
+        subprocess.run(["git", "remote", "add", "origin", remote], cwd=repo, check=True)
+    _, _, _, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    assert dependabot_assignees(outputs) == [None]
+
+
+def test_assignees_on_the_command_line(tmp_path):
+    repo = make_repo(tmp_path, {"a.sh": ""})
+    subprocess.run(["git", "remote", "add", "origin", "git@github.com:SomeOrg/App.git"], cwd=repo, check=True)
+    assert init_repo.main([str(repo), "--ref", "HEAD", "--assignee", "alice", "--assignee", "bob"]) == 0
+    assert [u["assignees"] for u in load(repo, ".github/dependabot.yml")["updates"]] == [["alice", "bob"]]
+    assert init_repo.main([str(repo), "--ref", "HEAD", "--no-assignee", "--force"]) == 0
+    assert "assignees" not in (repo / ".github/dependabot.yml").read_text()
+
+
 def test_existing_files_are_kept(tmp_path, capsys):
     repo = make_repo(tmp_path, PYTHON)
     (repo / ".github/workflows").mkdir(parents=True)
