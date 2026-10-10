@@ -59,22 +59,10 @@ jobs:
 
       - name: Wait for the health URL
         if: inputs.health-url != ''
-        env:
-          URL: ${{ inputs.health-url }}
-          TIMEOUT: ${{ inputs.timeout }}
-        # By the clock rather than by counting attempts, and each attempt capped,
-        # so a server that accepts the connection but never answers holds the
-        # step at most one attempt past the timeout, not until the job is killed.
-        run: |
-          deadline=$((SECONDS + TIMEOUT))
-          until curl -sf --connect-timeout 5 --max-time 10 "$URL" > /dev/null; do
-            if ((SECONDS >= deadline)); then
-              echo "::error::$URL did not answer within ${TIMEOUT}s"
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "$URL answered after ${SECONDS}s"
+        uses: $/actions/wait-for-url
+        with:
+          url: ${{ inputs.health-url }}
+          timeout: ${{ inputs.timeout }}
 
       - name: Commands
         if: inputs.commands != ''

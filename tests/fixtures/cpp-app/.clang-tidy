@@ -1,0 +1,3 @@
+# For ci-clang-tidy in self-ci.yml: a small set that the fixture passes.
+Checks: '-*,bugprone-*,performance-*'
+WarningsAsErrors: '*'

@@ -1,0 +1,21 @@
+name: Wait for URL
+description: >-
+  Waits until a URL answers with a status below 400, or fails after timeout
+  seconds. See wait_for_url.py.
+
+inputs:
+  url:
+    required: true
+  timeout:
+    required: false
+    default: "180"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/wait_for_url.py
+        URL: ${{ inputs.url }}
+        TIMEOUT: ${{ inputs.timeout }}
+      run: python3 "$SCRIPT"

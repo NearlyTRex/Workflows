@@ -1,0 +1,37 @@
+name: Release pull request
+description: >-
+  Commits the version file on a release/<tag> branch, force-pushes it, and opens
+  a pull request into base, or reports the one already open. Fails when the tag
+  already exists. Needs a checkout with push credentials, and contents and
+  pull-requests write. See release_pr.py.
+
+inputs:
+  tag:
+    required: true
+  version:
+    required: true
+  version-file:
+    required: true
+  base:
+    required: false
+    default: ${{ github.ref_name }}
+  repository:
+    required: false
+    default: ${{ github.repository }}
+  token:
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/release_pr.py
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repository }}
+        BASE: ${{ inputs.base }}
+        TAG: ${{ inputs.tag }}
+        VERSION: ${{ inputs.version }}
+        VERSION_FILE: ${{ inputs.version-file }}
+      run: python3 "$SCRIPT"

@@ -59,6 +59,13 @@ on:
           build of one preset). Defaults to the artifact name.
         type: string
         default: ""
+      rolling-cache-paths:
+        description: >-
+          Newline-separated paths saved after every run that isn't cancelled and restored from the
+          newest save, as ccache is; for caches that grow with the code, such as ci-clang-tidy's
+          --cache-dir. cache-paths, keyed on cache-key-files, suits what changes only with them.
+        type: string
+        default: ""
       ccache:
         description: >-
           Install ccache, route the compilers through it (CMake's launcher, and ccache's wrappers
@@ -195,6 +202,16 @@ jobs:
         shell: bash
         run: ccache --zero-stats
 
+      # Keyed like the ccache, and saved after the tests, which may fill it too.
+      - name: Restore rolling cache
+        id: rolling
+        if: inputs.rolling-cache-paths != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ inputs.rolling-cache-paths }}
+          key: rolling-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}@${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: rolling-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}@
+
       - name: Build
         shell: bash
         env:
@@ -224,6 +241,13 @@ jobs:
         env:
           TEST_COMMAND: ${{ inputs.test-command }}
         run: bash -euo pipefail -c "$TEST_COMMAND"
+
+      - name: Save rolling cache
+        if: '!cancelled() && steps.rolling.outcome == ''success'''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ inputs.rolling-cache-paths }}
+          key: rolling-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}@${{ github.run_id }}-${{ github.run_attempt }}
 
       - if: inputs.artifact != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
