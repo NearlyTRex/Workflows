@@ -78,5 +78,5 @@ def test_reads_the_command_line(monkeypatch):
 
 def test_runs_as_a_script(tmp_path):
     result = subprocess.run([sys.executable, str(ROOT / "actions" / "build-env" / "ci_phase.py"), "x"],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, check=False)
     assert result.returncode == 2

@@ -27,8 +27,8 @@ def test_well_formed_fences_pass():
 def test_text_after_a_closing_fence_is_reported():
     # The block runs on past this line, hiding what follows from the lint rules
     text = "```bash\npip install x\n``` What\neach command does is here.\n"
-    assert find_problems(text) == [(3, "text after a closing fence, so the code block opened on "
-                                       "line 1 does not end here: ``` What")]
+    assert find_problems(text) == [(3, ("text after a closing fence, so the code block opened on "
+                                        "line 1 does not end here: ``` What"))]
 
 
 def test_a_block_that_never_closes_is_reported():

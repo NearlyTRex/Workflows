@@ -118,6 +118,6 @@ def test_dry_run_prepares_but_runs_nothing(env, tmp_path, capsys):
 
 def test_main_runs_the_real_gh(env, monkeypatch):
     seen = []
-    monkeypatch.setattr(pub.subprocess, "run", lambda args: seen.append(args) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(pub.subprocess, "run", lambda args, check: seen.append(args) or type("R", (), {"returncode": 0})())
     assert pub.main(env) == 0
     assert seen[0][:2] == ["gh", "api"] and seen[1][:3] == ["gh", "release", "create"]

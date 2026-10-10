@@ -63,7 +63,7 @@ def prepare(env, workdir):
 
 
 def gh(args):
-    return subprocess.run(["gh", *args]).returncode
+    return subprocess.run(["gh", *args], check=False).returncode
 
 
 def publish(env, run=gh):

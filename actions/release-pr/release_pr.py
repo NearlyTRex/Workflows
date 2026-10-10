@@ -6,13 +6,17 @@ after a failure force-pushes over it, and an open pull request from it is update
 opened again.
 """
 
+import importlib.util
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tag-exists"))
-from tag_exists import tag_exists  # noqa: E402
+_spec = importlib.util.spec_from_file_location(
+    "tag_exists", Path(__file__).resolve().parent.parent / "tag-exists" / "tag_exists.py")
+_tag_exists = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_tag_exists)
+tag_exists = _tag_exists.tag_exists
 
 BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"

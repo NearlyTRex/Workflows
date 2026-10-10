@@ -16,7 +16,7 @@ import sys
 
 def commit_exists(sha):
     return subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"],
-                          capture_output=True).returncode == 0
+                          capture_output=True, check=False).returncode == 0
 
 
 def scan_range(event, pr_base, pr_head, before, after, exists=commit_exists):

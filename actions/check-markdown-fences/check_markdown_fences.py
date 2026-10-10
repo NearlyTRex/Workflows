@@ -51,8 +51,8 @@ def find_problems(text):
             opened = (fence[0], len(fence), number)
         elif fence[0] == opened[0] and len(fence) >= opened[1]:
             if rest.strip():
-                problems.append((number, "text after a closing fence, so the code block opened on "
-                                         f"line {opened[2]} does not end here: {raw.strip()}"))
+                problems.append((number, ("text after a closing fence, so the code block opened on "
+                                          f"line {opened[2]} does not end here: {raw.strip()}")))
             opened = None
     if opened is not None:
         problems.append((opened[2], "code block is never closed"))

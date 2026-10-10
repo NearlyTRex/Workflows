@@ -91,7 +91,7 @@ def test_every_library_reference_is_pinned_with_a_label(tmp_path):
 ])
 def test_stack_detection(tmp_path, files, stack, languages, release_file, ci_jobs):
     repo = make_repo(tmp_path, files)
-    target, detected, version_file, outputs, _ = init_repo.plan(repo, ref="HEAD")
+    _target, detected, version_file, outputs, _ = init_repo.plan(repo, ref="HEAD")
     assert detected == stack
     assert version_file == release_file
     security = yaml.safe_load(outputs[".github/workflows/security.yml"])

@@ -26,7 +26,7 @@ def run(tmp_path, files):
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     (tmp_path / "untracked.ps1").write_text("function Broken {\n")
     result = subprocess.run(["pwsh", "-NoProfile", "-File", str(SCRIPT)], cwd=tmp_path,
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, check=False)
     return result.returncode, result.stdout
 
 

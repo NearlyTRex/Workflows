@@ -53,7 +53,7 @@ class InitError(Exception):
 
 
 def git(repo, *args):
-    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise InitError(f"git {' '.join(args)} failed in {repo}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -156,7 +156,7 @@ def lock_warnings(target, requirement_files):
         if name.endswith(".lock"):
             warnings.append(f"{name}: Dependabot never updates *.lock files; pip-compile it to a "
                             "requirements*.txt named after its .in file instead")
-        elif re.search(r"#\s+pip-compile .*\bpyproject\.toml\s*$", header, re.M):
+        elif re.search(r"#\s+pip-compile .*\bpyproject\.toml\s*$", header, re.MULTILINE):
             warnings.append(f"{name}: compiled from pyproject.toml, which Dependabot can't regenerate; "
                             "compile it from a requirements .in file instead")
     return warnings
@@ -562,7 +562,7 @@ def apply_settings(target, dry_run=False):
         if dry_run:
             print(f"Would run ({purpose}):\n  {shlex.join(command)}")
             continue
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
         if result.returncode != 0:
             raise InitError(f"{shlex.join(command)} failed: {(result.stderr or result.stdout).strip()}")
         print(f"Set: {purpose}")
