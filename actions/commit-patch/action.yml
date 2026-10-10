@@ -1,0 +1,28 @@
+name: Commit patch
+description: >-
+  Applies a patch written by diff-paths, commits it as github-actions[bot] and
+  pushes it to branch. Needs a checkout of branch with push credentials, and
+  contents write. A patch that no longer applies fails. See commit_patch.py.
+
+inputs:
+  patch:
+    description: The patch, by default changes.patch in the runner's temp directory
+    required: false
+    default: ""
+  message:
+    description: "{date} is replaced by today's UTC date"
+    required: true
+  branch:
+    required: false
+    default: ${{ github.ref_name }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/commit_patch.py
+        PATCH: ${{ inputs.patch }}
+        MESSAGE: ${{ inputs.message }}
+        BRANCH: ${{ inputs.branch }}
+      run: python3 "$SCRIPT"
