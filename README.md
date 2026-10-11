@@ -57,6 +57,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 | `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `pr-branch` (scheduled-update/BASE), `assignees`, `node-version`, `timeout-minutes` (60). Outputs `changed`, `pr-url` | `contents: write`, `pull-requests: write` |
+| `license-year.yml` | `path` (LICENSE), `assignees`. Outputs `pr-url` | `contents: write`, `pull-requests: write` |
 
 - **`python-ci`:**
   - **Install:** from the hash-locked `lock-file` when there is one, otherwise with
@@ -249,6 +250,30 @@ All of them run with the least permission they need. The caller must grant at le
         paths: data/
   ```
 
+- **`license-year`:** opens a pull request that brings the copyright year(s) in the license file
+  up to the current year, using
+  [action-update-license-year](https://github.com/FantasticFiasco/action-update-license-year).
+  `assignees` get it to review and merge; it is never merged for you. A file that is already
+  current gets no pull request. It needs the same "create pull requests" setting as
+  prepare-release (see [Repo settings](#repo-settings)). Call it yearly:
+
+  ```yaml
+  on:
+    schedule:
+      - cron: "0 3 1 1 *" # 03:00 on January 1
+    workflow_dispatch:
+
+  jobs:
+    license-year:
+      uses: NearlyTRex/Workflows/.github/workflows/license-year.yml@<sha> # vX
+      permissions:
+        contents: write
+        pull-requests: write
+      with:
+        path: LICENSE.md
+        assignees: NearlyTRex
+  ```
+
 ### Python dependency locks
 
 Dependabot only regenerates a pip-compile lock that was compiled from a `.in` file and is named
@@ -359,7 +384,7 @@ Each repo that uses these workflows needs:
   fails without them:
   `gh api -X PUT repos/OWNER/REPO/vulnerability-alerts`
 - **"Allow GitHub Actions to create and approve pull requests"** (Settings → Actions → General),
-  for prepare-release and scheduled-update:
+  for prepare-release, scheduled-update and license-year:
 
   ```bash
   gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
