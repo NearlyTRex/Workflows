@@ -1,0 +1,43 @@
+name: Open pull request
+description: >-
+  Opens a pull request from head into base, or reports the one already open
+  from head. Outputs url. Needs pull-requests write. See open_pr.py.
+
+inputs:
+  head:
+    description: The branch with the changes, already pushed
+    required: true
+  base:
+    required: false
+    default: ${{ github.ref_name }}
+  title:
+    required: true
+  body:
+    required: true
+  assignees:
+    description: GitHub logins, separated by spaces, commas or newlines
+    required: false
+    default: ""
+  token:
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  url:
+    description: The pull request's URL
+    value: ${{ steps.open.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - id: open
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/open_pr.py
+        GH_TOKEN: ${{ inputs.token }}
+        HEAD_BRANCH: ${{ inputs.head }}
+        BASE: ${{ inputs.base }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        ASSIGNEES: ${{ inputs.assignees }}
+      run: python3 "$SCRIPT"

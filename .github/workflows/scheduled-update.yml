@@ -1,10 +1,10 @@
 name: Scheduled Update
 
 # Regenerates files with the repo's own command, such as a data export, and
-# commits whatever changed back to the branch the run started from. The command
-# runs in a job that can only read the repo; a second job that runs none of the
-# repo's code applies the result and pushes it, so a compromised dependency of
-# the command never holds a token that can write.
+# opens a pull request with whatever changed into the branch the run started
+# from. The command runs in a job that can only read the repo; a second job that
+# runs none of the repo's code commits the result and opens the pull request, so
+# a compromised dependency of the command never holds a token that can write.
 on:
   workflow_call:
     inputs:
@@ -19,9 +19,19 @@ on:
         type: string
         required: true
       commit-message:
-        description: "{date} is replaced by the run's UTC date"
+        description: "The commit message and the pull request's title. {date} is replaced by the run's UTC date"
         type: string
         default: "Update generated files: {date}"
+      pr-branch:
+        description: >-
+          The branch the pull request is opened from, by default scheduled-update/<base branch>.
+          Each run force-pushes it, so the one pull request always holds the latest changes.
+        type: string
+        default: ""
+      assignees:
+        description: Who the pull request is assigned to, as GitHub logins separated by spaces or commas
+        type: string
+        default: ""
       node-version:
         description: Set up this Node.js version, with npm's download cache, before the command
         type: string
@@ -33,6 +43,9 @@ on:
       changed:
         description: Whether the command changed anything under paths
         value: ${{ jobs.generate.outputs.changed }}
+      pr-url:
+        description: The pull request's URL, when anything changed
+        value: ${{ jobs.pull-request.outputs.url }}
 
 permissions: {}
 
@@ -73,21 +86,24 @@ jobs:
           path: ${{ runner.temp }}/changes.patch
           retention-days: 1
 
-  commit:
-    name: Commit
+  pull-request:
+    name: Pull request
     needs: generate
     if: needs.generate.outputs.changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: write
+    outputs:
+      url: ${{ steps.pr.outputs.url }}
     # One push at a time per branch, so two runs never race to the same commit.
     concurrency:
       group: scheduled-update-${{ github.repository }}-${{ github.ref }}
       cancel-in-progress: false
     steps:
       # Credentials stay on so the job can push. It only applies a patch and
-      # runs none of the repo's code. The branch's tip, not the commit the
+      # runs none of the repo's code. The base branch's tip, not the commit the
       # command ran on: the branch may have moved since. A patch that no longer
       # applies fails the run, and the next one starts from the new tip.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
@@ -99,6 +115,20 @@ jobs:
           name: scheduled-update-patch
           path: ${{ runner.temp }}
 
-      - uses: $/actions/commit-patch
+      - id: commit
+        uses: $/actions/commit-patch
         with:
           message: ${{ inputs.commit-message }}
+          branch: ${{ inputs.pr-branch || format('scheduled-update/{0}', github.ref_name) }}
+          force: "true"
+
+      - id: pr
+        uses: $/actions/open-pr
+        with:
+          head: ${{ inputs.pr-branch || format('scheduled-update/{0}', github.ref_name) }}
+          title: ${{ steps.commit.outputs.message }}
+          body: >-
+            Opened by the ${{ github.workflow }} workflow, which force-pushes this branch on
+            every run that finds changes, so this pull request always holds the latest ones.
+            Merge it whenever, or leave it to pick up the next run's.
+          assignees: ${{ inputs.assignees }}

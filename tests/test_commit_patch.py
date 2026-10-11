@@ -1,5 +1,6 @@
 import datetime
 import importlib.util
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -83,3 +84,34 @@ def test_patch_that_no_longer_applies_fails(tmp_path, origin, monkeypatch):
     with pytest.raises(subprocess.CalledProcessError):
         commit_patch.main({"PATCH": "", "RUNNER_TEMP": str(tmp_path), "MESSAGE": "Update", "BRANCH": "main"})
     assert git(origin, "log", "-1", "--format=%s", "main").strip() == "init"
+
+
+def test_force_replaces_the_pull_request_branch(tmp_path, origin, monkeypatch):
+    # Yesterday's run left scheduled-update/main with a commit that today's replaces.
+    make_patch(tmp_path, origin, monkeypatch, "1,a\n2,stale\n")
+    commit_clone(tmp_path, origin, monkeypatch)
+    env = {"PATCH": "", "RUNNER_TEMP": str(tmp_path), "MESSAGE": "Update: {date}", "BRANCH": "scheduled-update/main",
+           "FORCE": "true", "GITHUB_OUTPUT": str(tmp_path / "commit-output")}
+    assert commit_patch.main(env, TODAY) == 0
+    for name in ("generate", "commit"):
+        shutil.rmtree(tmp_path / name)
+    make_patch(tmp_path, origin, monkeypatch, "1,a\n2,b\n")
+    commit_clone(tmp_path, origin, monkeypatch)
+    assert commit_patch.main(env, datetime.date(2026, 10, 11)) == 0
+    assert git(origin, "show", "scheduled-update/main:data.csv") == "1,a\n2,b\n"
+    assert git(origin, "log", "--format=%s", "scheduled-update/main").split("\n")[:2] == ["Update: 2026-10-11", "init"]
+    assert git(origin, "show", "main:data.csv") == "1,a\n"
+    assert (tmp_path / "commit-output").read_text().splitlines()[-1] == "message=Update: 2026-10-11"
+
+
+def test_without_force_a_diverged_branch_is_refused(tmp_path, origin, monkeypatch):
+    make_patch(tmp_path, origin, monkeypatch, "1,a\n2,stale\n")
+    commit_clone(tmp_path, origin, monkeypatch)
+    env = {"PATCH": "", "RUNNER_TEMP": str(tmp_path), "MESSAGE": "Update", "BRANCH": "scheduled-update/main"}
+    assert commit_patch.main(env) == 0
+    for name in ("generate", "commit"):
+        shutil.rmtree(tmp_path / name)
+    make_patch(tmp_path, origin, monkeypatch, "1,a\n2,b\n")
+    commit_clone(tmp_path, origin, monkeypatch)
+    with pytest.raises(subprocess.CalledProcessError):
+        commit_patch.main(env)
