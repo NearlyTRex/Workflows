@@ -1,0 +1,44 @@
+name: License Year
+
+# Opens a pull request bringing the copyright year(s) in the license file up to
+# the current year, assigned for review. Nothing happens when they're current.
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: The license file
+        type: string
+        default: LICENSE
+      assignees:
+        description: Who the pull request is assigned to, as GitHub logins separated by commas
+        type: string
+        default: ""
+    outputs:
+      pr-url:
+        description: The pull request's URL, when the year changed
+        value: ${{ jobs.update.outputs.url }}
+
+permissions: {}
+
+jobs:
+  update:
+    name: Update
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      url: ${{ steps.license.outputs.pullRequestUrl }}
+    steps:
+      # Credentials stay on: the action commits and pushes its branch with git.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
+        with:
+          fetch-depth: 0
+
+      - id: license
+        uses: FantasticFiasco/action-update-license-year@f180e962fa988db222d8f03ef4636750312d1b3d # v3.0.4
+        with:
+          token: ${{ github.token }}
+          path: ${{ inputs.path }}
+          assignees: ${{ inputs.assignees }}
