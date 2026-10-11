@@ -1,8 +1,9 @@
 """Apply a patch from diff-paths, commit it as github-actions[bot], and push it.
 
 Reads PATCH, MESSAGE and BRANCH from the environment; an empty PATCH means changes.patch in
-RUNNER_TEMP. {date} in MESSAGE becomes today's UTC date. Needs a checkout of BRANCH with push
-credentials.
+RUNNER_TEMP. {date} in MESSAGE becomes today's UTC date. FORCE=true force-pushes, replacing
+whatever BRANCH held, as for a branch a pull request is opened from. Needs a checkout to commit
+on, with push credentials. Sets the step output message, with the date filled in.
 """
 
 import datetime
@@ -29,13 +30,17 @@ def main(env=None, today=None):
     message = env["MESSAGE"].replace("{date}", today.isoformat())
     git("apply", "--index", patch_path(env))
     git("-c", f"user.name={BOT_NAME}", "-c", f"user.email={BOT_EMAIL}", "commit", "--quiet", "-m", message)
-    git("push", "origin", f"HEAD:{branch}")
+    force = ["--force"] if env.get("FORCE") == "true" else []
+    git("push", *force, "origin", f"HEAD:{branch}")
     commit = git("rev-parse", "--short", "HEAD", capture_output=True, text=True).stdout.strip()
     summary = f"Pushed {commit} to {branch}: {message}\n"
     print(summary, end="")
     if step_summary := env.get("GITHUB_STEP_SUMMARY"):
         with open(step_summary, "a", encoding="utf-8") as out:
             out.write(summary)
+    if output := env.get("GITHUB_OUTPUT"):
+        with open(output, "a", encoding="utf-8") as out:
+            out.write(f"message={message}\n")
     return 0
 
 

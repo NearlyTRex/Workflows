@@ -1,8 +1,9 @@
 name: Commit patch
 description: >-
   Applies a patch written by diff-paths, commits it as github-actions[bot] and
-  pushes it to branch. Needs a checkout of branch with push credentials, and
-  contents write. A patch that no longer applies fails. See commit_patch.py.
+  pushes it to branch, by force when force is true. Needs a checkout to commit on, with
+  push credentials, and contents write. A patch that no longer applies fails.
+  See commit_patch.py.
 
 inputs:
   patch:
@@ -13,16 +14,28 @@ inputs:
     description: "{date} is replaced by today's UTC date"
     required: true
   branch:
+    description: Where to push
     required: false
     default: ${{ github.ref_name }}
+  force:
+    description: Force-push, replacing whatever branch held
+    required: false
+    default: "false"
+
+outputs:
+  message:
+    description: The commit message, with the date filled in
+    value: ${{ steps.commit.outputs.message }}
 
 runs:
   using: composite
   steps:
-    - shell: bash
+    - id: commit
+      shell: bash
       env:
         SCRIPT: ${{ github.action_path }}/commit_patch.py
         PATCH: ${{ inputs.patch }}
         MESSAGE: ${{ inputs.message }}
         BRANCH: ${{ inputs.branch }}
+        FORCE: ${{ inputs.force }}
       run: python3 "$SCRIPT"

@@ -12,11 +12,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-_spec = importlib.util.spec_from_file_location(
-    "tag_exists", Path(__file__).resolve().parent.parent / "tag-exists" / "tag_exists.py")
-_tag_exists = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_tag_exists)
-tag_exists = _tag_exists.tag_exists
+
+def _load(action, module):
+    spec = importlib.util.spec_from_file_location(module, Path(__file__).resolve().parent.parent / action / f"{module}.py")
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
+tag_exists = _load("tag-exists", "tag_exists").tag_exists
+ensure_pull_request = _load("open-pr", "open_pr").ensure_pull_request
 
 BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
@@ -24,13 +29,6 @@ BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 def git(*arguments):
     subprocess.run(["git", *arguments], check=True)
-
-
-def open_pull_request(branch):
-    result = subprocess.run(["gh", "pr", "view", branch, "--json", "url,state",
-                             "--jq", 'select(.state == "OPEN") | .url'],
-                            capture_output=True, text=True, check=False)
-    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def main(env=None):
@@ -47,12 +45,8 @@ def main(env=None):
     git("commit", "-m", f"Release {tag}", "--", version_file)
     git("push", "--force", "origin", branch)
 
-    if url := open_pull_request(branch):
-        print(f"Updated the open pull request: {url}")
-        return 0
     body = f"Sets the version to {version} in `{version_file}`. Merging this tags {tag} and publishes the release."
-    subprocess.run(["gh", "pr", "create", "--base", env["BASE"], "--head", branch, "--title", f"Release {tag}",
-                    "--body", body], check=True)
+    ensure_pull_request(branch, env["BASE"], f"Release {tag}", body)
     return 0
 
 

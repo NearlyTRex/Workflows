@@ -102,7 +102,8 @@ def test_an_open_pull_request_is_updated_not_reopened(fakes, monkeypatch, capsys
     assert release_pr.main(RELEASE) == 0
     calls = fakes()
     if url:
-        assert calls[-1] == VIEW
+        assert calls[-2] == VIEW
+        assert calls[-1][:4] == ["gh", "pr", "edit", url] and calls[-1][4:6] == ["--title", "Release v1.2.0"]
         assert f"Updated the open pull request: {url}" in capsys.readouterr().out
     else:
         assert calls[-1][:3] == ["gh", "pr", "create"]

@@ -56,7 +56,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
 | `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
-| `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `node-version`, `timeout-minutes` (60). Outputs `changed` | `contents: write` |
+| `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `pr-branch` (scheduled-update/BASE), `assignees`, `node-version`, `timeout-minutes` (60). Outputs `changed`, `pr-url` | `contents: write`, `pull-requests: write` |
 
 - **`python-ci`:**
   - **Install:** from the hash-locked `lock-file` when there is one, otherwise with
@@ -210,16 +210,23 @@ All of them run with the least permission they need. The caller must grant at le
   fails the pull request rather than the release. Installing Inno Setup from Chocolatey is
   retried, since the community feed sometimes rate-limits or times out.
 - **`scheduled-update`:** for repos that publish generated data, such as an export refreshed
-  daily. It runs `command` and commits whatever it changed under `paths` to the branch the run
-  started from, as `github-actions[bot]`. A run that changes nothing makes no commit.
+  daily. It runs `command` and opens a pull request, as `github-actions[bot]`, with whatever it
+  changed under `paths`, into the branch the run started from. So it works on a branch that
+  requires pull requests. A run that changes nothing does nothing.
+  - **One pull request:** each run commits onto the base branch's tip and force-pushes
+    `pr-branch`, so a single pull request always holds the latest changes; an open one gets the
+    new title. Merge it whenever. `assignees` get it, so it shows up in their review queue.
   - **Two jobs:** `command` runs with read-only access, and `diff-paths` writes what it changed
     as a patch. A second job, which runs none of the repo's code, applies it with
-    `commit-patch` and pushes, so a compromised dependency of the command never holds a token
-    that can write.
-  - **Moved branch:** the changes are applied to the branch's tip. If a push since the command
-    started touched the same lines, the run fails and the next one starts from the new tip.
-  - **Pushes don't trigger workflows:** GitHub doesn't start runs for a push made with the
-    workflow token, so the data commits don't set off CI.
+    `commit-patch` and opens the pull request with `open-pr`, so a compromised dependency of
+    the command never holds a token that can write.
+  - **Moved branch:** the changes are applied to the base branch's tip. If a push since the
+    command started touched the same lines, the run fails and the next one starts from the new
+    tip.
+  - **No CI on the pull request:** GitHub doesn't start runs for a pull request opened with the
+    workflow token, so don't make checks required on the base branch.
+  - **Repo setting:** "Allow GitHub Actions to create and approve pull requests", as for
+    prepare-release (see [Repo settings](#repo-settings)).
   - **`node-version`:** sets up Node.js with npm's download cache, which needs a
     `package-lock.json`.
 
@@ -234,7 +241,9 @@ All of them run with the least permission they need. The caller must grant at le
       uses: NearlyTRex/Workflows/.github/workflows/scheduled-update.yml@<sha> # vX
       permissions:
         contents: write
+        pull-requests: write
       with:
+        assignees: NearlyTRex
         node-version: "24"
         command: npm ci && node generate.js
         paths: data/
@@ -350,7 +359,7 @@ Each repo that uses these workflows needs:
   fails without them:
   `gh api -X PUT repos/OWNER/REPO/vulnerability-alerts`
 - **"Allow GitHub Actions to create and approve pull requests"** (Settings → Actions → General),
-  for prepare-release:
+  for prepare-release and scheduled-update:
 
   ```bash
   gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
@@ -379,7 +388,8 @@ so one pin fixes the whole chain. The actions are:
 | `tag-exists` | Whether a tag exists on GitHub, for `release-check` and `release` |
 | `release-pr` | Commits the bumped version on `release/<tag>` and opens or updates its pull request |
 | `diff-paths` | Stages the changes under some paths and writes them as a patch, for `scheduled-update` |
-| `commit-patch` | Applies a `diff-paths` patch, commits it as `github-actions[bot]` and pushes it |
+| `commit-patch` | Applies a `diff-paths` patch, commits it as `github-actions[bot]` and pushes it, by force for a pull request's branch |
+| `open-pr` | Opens a pull request, or updates the one already open from the branch, for `release-pr` and `scheduled-update` |
 | `wait-for-url` | Waits for a URL to answer below 400, by the clock, for `compose-test` |
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
 | `build-env` | Parallel jobs, ccache, and `ci-phase` and `ci-clang-tidy` on `PATH` for `cpp-build` |
