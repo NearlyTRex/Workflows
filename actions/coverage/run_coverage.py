@@ -5,7 +5,8 @@ from the environment, in the working directory the action gives it. Uses the rep
 .coveragerc or [tool.coverage] config when it has one; otherwise it measures every Python file
 under the working directory with branch coverage, so a module no test imports still counts.
 The report also goes on the run's summary page, so a failing gate shows what is missing
-without opening the log. When coverage measured nothing but test files, which always run, the
+without opening the log. A parallel run (pytest-xdist workers, or `patch = subprocess`) leaves a
+data file per process, which are combined before the report. When coverage measured nothing but test files, which always run, the
 total says nothing about the code; that only warns, since it can't tell a mistake from a repo
 whose code really is all tests.
 """
@@ -50,6 +51,17 @@ def only_tests_warning():
               "parallel = true and patch = subprocess to the coverage config.")
 
 
+def combine():
+    """Merge the per-process data files a parallel run leaves. Returns a failing exit code, or 0
+    when they merged or there were none (a run that is not parallel writes one file)."""
+    result = coverage("combine", "--quiet", capture_output=True, text=True)
+    output = result.stdout + result.stderr
+    if result.returncode != 0 and "No data to combine" not in output:
+        print(output, end="")
+        return result.returncode
+    return 0
+
+
 def main(env=None):
     env = os.environ if env is None else env
     fail_under = env["FAIL_UNDER"]
@@ -57,6 +69,8 @@ def main(env=None):
     tests = coverage("run", *options, "-m", *shlex.split(env["TEST_COMMAND"]))
     if tests.returncode != 0:
         return tests.returncode
+    if failed := combine():
+        return failed
 
     status = coverage("report", f"--fail-under={fail_under}", "--show-missing", "--skip-covered").returncode
     if warning := only_tests_warning():

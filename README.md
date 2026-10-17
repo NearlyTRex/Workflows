@@ -78,6 +78,9 @@ All of them run with the least permission they need. The caller must grant at le
     - **Only tests measured:** when coverage measured nothing but test files, it warns: the code
       probably runs in a subprocess coverage isn't following. Set `[run] source` to the code and
       add `parallel = true` and `patch = subprocess` to the coverage config.
+    - **Parallel runs:** the per-process data files that `parallel = true` leaves, from
+      subprocesses or pytest-xdist workers (`test-command: pytest -n auto`), are combined before
+      the report.
   - **Shell coverage:** `shell-coverage-source` names scripts, or directories searched for `*.sh`
     and `*.bash`, that the pytest tests must run. The tests run them with
     `subprocess.run(["bash", "scripts/x.sh", ...])`; every bash they start is traced, and the run
