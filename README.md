@@ -1,5 +1,12 @@
 # Workflows
 
+[![CI](https://github.com/NearlyTRex/Workflows/actions/workflows/self-ci.yml/badge.svg?branch=main)](https://github.com/NearlyTRex/Workflows/actions/workflows/self-ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/NearlyTRex/Workflows/actions/workflows/self-ci.yml)
+[![Security](https://github.com/NearlyTRex/Workflows/actions/workflows/self-security.yml/badge.svg?branch=main)](https://github.com/NearlyTRex/Workflows/actions/workflows/self-security.yml)
+[![Tool versions](https://github.com/NearlyTRex/Workflows/actions/workflows/self-tool-versions.yml/badge.svg)](https://github.com/NearlyTRex/Workflows/actions/workflows/self-tool-versions.yml)
+[![Release](https://img.shields.io/github/v/release/NearlyTRex/Workflows)](https://github.com/NearlyTRex/Workflows/releases/latest)
+[![License](https://img.shields.io/github/license/NearlyTRex/Workflows)](LICENSE)
+
 Reusable template library for github workflows
 
 My repos call these workflows instead of carrying their own copies. A fix or tool update made here
