@@ -5,6 +5,7 @@ Usage:
                         [--assignee USER ... | --no-assignee] [--ref REF] [--force] [--dry-run]
     init_repo.py TARGET --repin [--ref REF]
     init_repo.py TARGET --settings [--dry-run]
+    init_repo.py TARGET --community [--dry-run]
 
 Writes into TARGET/.github:
     workflows/ci.yml               lint, plus python-ci for Python repos, cpp-build for CMake
@@ -27,9 +28,18 @@ library is released. Existing files are left alone unless --force is given.
 --repin moves every library pin in TARGET's workflows to REF and changes nothing else,
 so customized callers can be upgraded without regenerating them.
 
+Also writes the community health files GitHub's community standards look for, from
+templates/community: CODE_OF_CONDUCT.md, CONTRIBUTING.md, SECURITY.md, issue forms and a
+pull request template, linked to TARGET's GitHub origin. Any of these TARGET already has
+is kept, even with --force, since those are usually written for the repo.
+
+--community writes only those files, so a repo set up before they existed can take them
+without regenerating its workflows.
+
 --settings turns on, with gh, the GitHub settings TARGET's workflows need: Dependabot
-alerts (and with them the dependency graph) and, when it has prepare-release.yml,
-letting Actions open pull requests. It changes nothing in TARGET itself.
+alerts (and with them the dependency graph), letting Actions open pull requests when it
+has prepare-release.yml, and private vulnerability reporting when it has SECURITY.md.
+It changes nothing in TARGET itself.
 """
 
 import argparse
@@ -41,6 +51,7 @@ import sys
 from pathlib import Path
 
 LIBRARY_ROOT = Path(__file__).resolve().parent.parent
+COMMUNITY_TEMPLATES = LIBRARY_ROOT / "templates" / "community"
 DEFAULT_LIBRARY = "NearlyTRex/Workflows"
 
 _spec = importlib.util.spec_from_file_location("version", LIBRARY_ROOT / "actions" / "version" / "version.py")
@@ -65,13 +76,48 @@ def github_slug(url):
     return match.group(1) if match else None
 
 
-def origin_owner(target):
-    """The owner of target's GitHub origin, or None without one."""
+def origin_slug(target):
+    """OWNER/REPO of target's GitHub origin, or None without one."""
     try:
-        slug = github_slug(git(target, "remote", "get-url", "origin"))
+        return github_slug(git(target, "remote", "get-url", "origin"))
     except InitError:
         return None
+
+
+def origin_owner(target):
+    """The owner of target's GitHub origin, or None without one."""
+    slug = origin_slug(target)
     return slug.split("/")[0] if slug else None
+
+
+def community_files(slug):
+    """The community health files from templates/community, filled in for the GitHub repo
+    OWNER/REPO: the code of conduct, contributing guide, security policy, and issue and pull
+    request templates."""
+    files = {}
+    for path in sorted(COMMUNITY_TEMPLATES.rglob("*")):
+        if path.is_file():
+            text = path.read_text().replace("{{repo}}", slug).replace("{{name}}", slug.split("/")[1])
+            files[path.relative_to(COMMUNITY_TEMPLATES).as_posix()] = text
+    return files
+
+
+def write_community_files(target, slug, dry_run=False):
+    """Write the community files target lacks, leaving any it has alone, since those are
+    usually written for the repo. Returns (written, kept)."""
+    written, kept = [], []
+    for name, text in community_files(slug).items():
+        path = target / name
+        if path.exists():
+            kept.append(name)
+            continue
+        written.append(name)
+        if dry_run:
+            print(f"\n--- {name}\n{text}")
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    return written, kept
 
 
 def library_name():
@@ -552,6 +598,9 @@ def settings_commands(target):
                          ["gh", "api", "-X", "PUT", f"repos/{slug}/actions/permissions/workflow",
                           "-f", "default_workflow_permissions=read",
                           "-F", "can_approve_pull_request_reviews=true"]))
+    if (target / "SECURITY.md").exists():
+        commands.append(("private vulnerability reporting, for SECURITY.md's report form",
+                         ["gh", "api", "-X", "PUT", f"repos/{slug}/private-vulnerability-reporting"]))
     return slug, commands
 
 
@@ -598,6 +647,13 @@ def plan(target, stack=None, version_file=None, release=True, ref=None, assignee
     return target, stack, version_file, outputs, warnings
 
 
+def report_community_files(written, kept, dry_run=False):
+    for name in written:
+        print(f"  {'would write' if dry_run else 'wrote'} {name}")
+    if kept:
+        print(f"  kept the repo's own: {', '.join(kept)}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("target")
@@ -615,7 +671,22 @@ def main(argv=None):
     parser.add_argument("--repin", action="store_true", help="Only move existing library pins to --ref")
     parser.add_argument("--settings", action="store_true",
                         help="Only turn on the GitHub settings the workflows need, with gh")
+    parser.add_argument("--community", action="store_true",
+                        help="Only write the community health files TARGET lacks")
     args = parser.parse_args(argv)
+
+    if args.community:
+        target = Path(args.target).resolve()
+        if not target.is_dir():
+            print(f"error: {target} is not a directory", file=sys.stderr)
+            return 1
+        slug = origin_slug(target)
+        if not slug:
+            print(f"error: {target} has no GitHub origin for the community files to link to", file=sys.stderr)
+            return 1
+        written, kept = write_community_files(target, slug, args.dry_run)
+        report_community_files(written, kept, args.dry_run)
+        return 0
 
     if args.settings:
         try:
@@ -667,6 +738,13 @@ def main(argv=None):
         path.write_text(text)
         print(f"  wrote {name}")
 
+    slug = origin_slug(target)
+    if slug:
+        written, kept = write_community_files(target, slug, args.dry_run)
+        report_community_files(written, kept, args.dry_run)
+    else:
+        print("  no GitHub origin, so no community files; add one and run with --community")
+
     for warning in warnings:
         print(f"  warning: {warning}")
 
@@ -675,6 +753,8 @@ def main(argv=None):
         print("  - Dependency graph and Dependabot alerts, for dependency review and Dependabot")
         if version_file:
             print("  - \"Allow GitHub Actions to create and approve pull requests\", for prepare-release")
+        if (target / "SECURITY.md").exists():
+            print("  - Private vulnerability reporting, for SECURITY.md's report form")
         print(f"Turn them on with: {Path(__file__).name} {shlex.quote(str(target))} --settings")
 
     others = sorted(p.name for p in (target / ".github" / "workflows").glob("*.y*ml")

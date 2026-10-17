@@ -473,6 +473,7 @@ def test_settings_turns_on_what_the_workflows_need(tmp_path, capsys, monkeypatch
         ["gh", "api", "-X", "PUT", "repos/Someone/App/vulnerability-alerts"],
         ["gh", "api", "-X", "PUT", "repos/Someone/App/actions/permissions/workflow",
          "-f", "default_workflow_permissions=read", "-F", "can_approve_pull_request_reviews=true"],
+        ["gh", "api", "-X", "PUT", "repos/Someone/App/private-vulnerability-reporting"],
     ]
     out = capsys.readouterr().out
     assert "Set: Actions may open pull requests" in out and "Someone/App is set up" in out
@@ -510,3 +511,100 @@ def test_settings_report_what_gh_refused(tmp_path, capsys, monkeypatch):
     fake_gh(monkeypatch, fails=True)
     assert init_repo.main([str(repo), "--settings"]) == 1
     assert "Must have admin rights" in capsys.readouterr().err
+
+
+COMMUNITY = [
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/pull_request_template.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+]
+
+
+def with_community_origin(repo, url="git@github.com:Owner/thing.git"):
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", url], check=True)
+    return repo
+
+
+def test_community_files_are_filled_in_for_the_repo(tmp_path):
+    repo = with_community_origin(make_repo(tmp_path, {"README.md": ""}))
+
+    assert init_repo.main([str(repo), "--community"]) == 0
+
+    for name in COMMUNITY:
+        text = (repo / name).read_text()
+        assert "{{" not in text, name
+    assert "https://github.com/Owner/thing/security/advisories/new" in (repo / "SECURITY.md").read_text()
+    assert (repo / "CONTRIBUTING.md").read_text().startswith("# Contributing to thing\n")
+
+
+def test_issue_forms_are_valid_and_point_security_reports_away(tmp_path):
+    repo = with_community_origin(make_repo(tmp_path, {"README.md": ""}))
+    init_repo.main([str(repo), "--community"])
+
+    config = load(repo, ".github/ISSUE_TEMPLATE/config.yml")
+    assert config["blank_issues_enabled"] is False
+    assert config["contact_links"][0]["url"] == "https://github.com/Owner/thing/security/advisories/new"
+    for form in ["bug_report.yml", "feature_request.yml"]:
+        body = load(repo, f".github/ISSUE_TEMPLATE/{form}")["body"]
+        assert any(item.get("validations", {}).get("required") for item in body), form
+
+
+def test_a_repos_own_community_files_are_kept(tmp_path, capsys):
+    repo = with_community_origin(make_repo(tmp_path, {"README.md": "", "SECURITY.md": "ours\n"}))
+
+    assert init_repo.main([str(repo), "--community"]) == 0
+
+    assert (repo / "SECURITY.md").read_text() == "ours\n"
+    assert (repo / "CONTRIBUTING.md").exists()
+    assert "kept the repo's own: SECURITY.md" in capsys.readouterr().out
+
+
+def test_community_dry_run_writes_nothing(tmp_path, capsys):
+    repo = with_community_origin(make_repo(tmp_path, {"README.md": ""}))
+
+    assert init_repo.main([str(repo), "--community", "--dry-run"]) == 0
+
+    assert not (repo / "CONTRIBUTING.md").exists()
+    assert "would write CONTRIBUTING.md" in capsys.readouterr().out
+
+
+def test_community_files_need_a_github_origin(tmp_path, capsys):
+    repo = make_repo(tmp_path, {"README.md": ""})
+
+    assert init_repo.main([str(repo), "--community"]) == 1
+    assert "no GitHub origin" in capsys.readouterr().err
+
+
+def test_community_needs_a_directory(tmp_path, capsys):
+    assert init_repo.main([str(tmp_path / "absent"), "--community"]) == 1
+    assert "is not a directory" in capsys.readouterr().err
+
+
+def test_a_full_init_adds_community_files_but_never_overwrites_them(tmp_path):
+    repo = with_community_origin(make_repo(tmp_path, {**PYTHON, "CODE_OF_CONDUCT.md": "ours\n"}))
+
+    assert init_repo.main([str(repo), "--ref", "HEAD", "--force"]) == 0
+
+    assert (repo / "CODE_OF_CONDUCT.md").read_text() == "ours\n"
+    assert all((repo / name).exists() for name in COMMUNITY)
+
+
+def test_a_full_init_without_an_origin_says_how_to_add_them(tmp_path, capsys):
+    repo = make_repo(tmp_path, PYTHON)
+
+    assert init_repo.main([str(repo), "--ref", "HEAD"]) == 0
+
+    assert "run with --community" in capsys.readouterr().out
+    assert not (repo / "CONTRIBUTING.md").exists()
+
+
+def test_a_repo_with_a_security_policy_is_told_to_turn_on_private_reporting(tmp_path, capsys):
+    repo = with_community_origin(make_repo(tmp_path, PYTHON))
+
+    assert init_repo.main([str(repo), "--ref", "HEAD"]) == 0
+
+    assert "Private vulnerability reporting, for SECURITY.md's report form" in capsys.readouterr().out
