@@ -1,0 +1,61 @@
+name: Shell coverage
+description: >-
+  Loads the shell coverage plugin into the pytest runs in the rest of the job,
+  so the bash scripts the tests run must reach a coverage threshold, and
+  optionally the shell sandbox plugin. Installs tree-sitter-bash, which the
+  plugin reads scripts with, into the project's Python from a hash-locked file,
+  and passes the plugins to pytest through PYTHONPATH and PYTEST_ADDOPTS. Needs
+  the project's Python already set up.
+
+inputs:
+  source:
+    description: Space-separated scripts or directories (searched for *.sh and *.bash) to measure, relative to pytest's rootdir. Empty turns shell coverage off
+    required: false
+    default: ""
+  exclude:
+    description: Space-separated globs of scripts to leave out, matched against each script's path from the rootdir
+    required: false
+    default: ""
+  fail-under:
+    description: Minimum percent of shell statements the tests must run. Empty reports without failing
+    required: false
+    default: "100"
+  branch:
+    description: Also count the right-hand side of each && and || as a statement that must run
+    required: false
+    default: "false"
+  sandbox:
+    description: Provide the shell_sandbox fixture, and fail its tests rather than skip them when user namespaces are unavailable
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install the shell parser
+      if: inputs.source != ''
+      shell: bash
+      env:
+        LOCK: ${{ github.action_path }}/requirements.txt
+      run: python -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "$LOCK"
+
+    # Ubuntu 24.04 runners restrict unprivileged user namespaces, which the
+    # sandbox builds its disposable root from.
+    - name: Allow user namespaces
+      if: inputs.sandbox == 'true'
+      shell: bash
+      run: |
+        if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        fi
+
+    - name: Load the plugins
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/pytest_options.py
+        SOURCE: ${{ inputs.source }}
+        EXCLUDE: ${{ inputs.exclude }}
+        FAIL_UNDER: ${{ inputs.fail-under }}
+        BRANCH: ${{ inputs.branch }}
+        SANDBOX: ${{ inputs.sandbox }}
+      run: python "$SCRIPT"

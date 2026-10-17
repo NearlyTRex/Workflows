@@ -43,7 +43,7 @@ All of them run with the least permission they need. The caller must grant at le
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100) | `contents: read` |
+| `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100), `shell-coverage-source`, `shell-coverage-exclude`, `shell-coverage-fail-under` (100), `shell-coverage-branch` (false), `shell-sandbox` (false) | `contents: read` |
 | `lint.yml` | `shellcheck` (true), `markdown` (true), `json` (true), `toml` (true), `yaml` (true), `actionlint` (true), `powershell` (true), `clang-format` (true) | `contents: read` |
 | `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files`, `tracked-files` (true), `tracked-files-patterns` | `contents: read` |
 | `codeql.yml` | `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
@@ -75,6 +75,57 @@ All of them run with the least permission they need. The caller must grant at le
     - **Test command:** with coverage on, `test-command` must be a Python module and its
       arguments, like `pytest -q`.
     - **Run page:** the coverage table, with missing lines, is also written to the job summary.
+    - **Only tests measured:** when coverage measured nothing but test files, it warns: the code
+      probably runs in a subprocess coverage isn't following. Set `[run] source` to the code and
+      add `parallel = true` and `patch = subprocess` to the coverage config.
+  - **Shell coverage:** `shell-coverage-source` names scripts, or directories searched for `*.sh`
+    and `*.bash`, that the pytest tests must run. The tests run them with
+    `subprocess.run(["bash", "scripts/x.sh", ...])`; every bash they start is traced, and the run
+    fails below `shell-coverage-fail-under`, 100 by default, or empty to only report.
+
+    ```yaml
+    with:
+      shell-coverage-source: scripts install.sh
+    ```
+
+    - **Statements:** the unit is a statement, read from each script's syntax tree by
+      tree-sitter-bash. A command over several lines counts once. The report lists each script's
+      missed lines, then the source of each missed statement.
+    - **Branches:** `cmd || { echo failed; exit 1; }` counts as run whenever `cmd` ran. With
+      `shell-coverage-branch`, the right-hand side of each `&&` and `||` is a statement of its
+      own, so the handler needs a test where `cmd` fails. Only right-hand sides with a literal
+      command word are counted, not ones like `a && $cmd`.
+    - **Exclusions:** a script the parser can't read fails the run, naming it. Leave vendored or
+      generated ones out with `shell-coverage-exclude`, globs matched against the path from the
+      repo root, where `*` crosses directories: `vendor/* */gradlew`.
+    - **Limits:** only bash 4.1 or newer is traced, and only under pytest, since the plugin loads
+      through `PYTEST_ADDOPTS`. `sh` doesn't read `BASH_ENV`. A test that builds its own
+      environment (`env=...`) takes it from the `shell_traced_env` fixture to stay traced.
+  - **Shell sandbox:** `shell-sandbox` gives the tests a `shell_sandbox` fixture for scripts
+    written for a fresh server. Each run is root in an unprivileged user namespace, with no
+    network, and `/etc`, `/var`, `/home`, `/tmp` and the like replaced by empty directories the
+    test owns. `PATH` holds recording stubs for `systemctl`, `apt-get`, `curl`, `git`, `docker`
+    and others, and a short list of harmless real tools, so an unplanned command fails with
+    "command not found" instead of running.
+
+    ```python
+    def test_install_enables_the_service(shell_sandbox):
+        shell_sandbox.write("/etc/myapp/conf", "port=80\n")
+        shell_sandbox.stub("curl", stdout="ok")
+        result = shell_sandbox.run("scripts/setup.sh", "install")  # relative to the repo root
+        assert result.returncode == 0
+        assert shell_sandbox.ran("systemctl", "enable", "myapp")
+    ```
+
+    - **Helpers:** arrange with `write`, `add_user` and `stub(name, stdout, code, script)`, run
+      with `run` or `run_command`, and read back with `read`, `exists`, `host_path`, `calls` and
+      `ran`. Override the `shell_sandbox_options` fixture for `extra_stubs` or `extra_tools`.
+    - **Runner:** the workflow lets user namespaces through on runners that restrict them, and
+      fails sandbox tests rather than skipping them if they're still unavailable. Locally they
+      skip where namespaces are unavailable, such as on macOS.
+    - **Locally:** install [the parser](actions/shell-coverage/requirements.txt) and run
+      `PYTHONPATH=<this repo>/actions/shell-coverage pytest -p pytest_shell_cov -p
+      pytest_shell_sandbox --shell-cov-source scripts`.
 - **`lint`:** shellchecks every tracked shell script, found by its `*.sh` or `*.bash` extension
   or by a `sh`, `bash`, `dash` or `ksh` shebang, checks that every tracked `*.json` and `*.toml`
   file parses, and lints Markdown with [rumdl](https://github.com/rvben/rumdl), which
@@ -405,6 +456,7 @@ so one pin fixes the whole chain. The actions are:
 |---|---|
 | `setup-tools` | zizmor, pip-audit, ruff, shellcheck, rumdl and yamllint from [`requirements.txt`](actions/setup-tools/requirements.txt), installed with hashes into a private venv |
 | `coverage` | Runs the tests under hash-locked coverage.py and enforces the threshold |
+| `shell-coverage` | Loads the shell coverage and sandbox pytest plugins into the job's later pytest runs |
 | `version` | Reads or bumps the version; [`version.py`](actions/version/version.py) runs locally too |
 | `zizmor` | zizmor with [this config](actions/zizmor/zizmor.yml) |
 | `gitleaks`, `trivy`, `trivy-config`, `actionlint` | Container actions. Their `Dockerfile` pins the image by digest |
@@ -468,7 +520,14 @@ only run on the default branch.
 
 Logic lives in scripts under `actions/`, called from the workflows, rather than inline in YAML,
 so it has tests: Python under the 100% gate, and `analyze.ps1` through pytest. The PowerShell
-tests are skipped on a machine without `pwsh`, but always run in CI. A script is Python unless it
+tests are skipped on a machine without `pwsh`, but always run in CI.
+
+The shell coverage plugin's statement finder is checked against a corpus of real-world idioms in
+`tests/shell_corpus`, and cross-checked against shfmt, an independent bash parser, which
+`requirements-dev.txt` installs. A statement it invents or misses is a bug in how it reads a
+construct: add the construct to the corpus. Check a script of your own with
+`python tests/shfmt_oracle.py path/to/*.sh`. The sandbox tests skip where user namespaces are
+unavailable, but always run in CI. A script is Python unless it
 must run where Python may not be, such as inside a tool's container.
 
 Dependabot has no Chocolatey ecosystem, so `self-tool-versions.yml` checks the Inno Setup version

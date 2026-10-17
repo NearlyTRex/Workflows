@@ -3,3 +3,7 @@
 pytest
 pyyaml
 clang-format
+# The shell coverage plugin's parser, and shfmt to cross-check it against
+tree-sitter
+tree-sitter-bash
+shfmt-py

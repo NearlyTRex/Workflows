@@ -5,9 +5,12 @@ from the environment, in the working directory the action gives it. Uses the rep
 .coveragerc or [tool.coverage] config when it has one; otherwise it measures every Python file
 under the working directory with branch coverage, so a module no test imports still counts.
 The report also goes on the run's summary page, so a failing gate shows what is missing
-without opening the log.
+without opening the log. When coverage measured nothing but test files, which always run, the
+total says nothing about the code; that only warns, since it can't tell a mistake from a repo
+whose code really is all tests.
 """
 
+import json
 import os
 import re
 import shlex
@@ -27,6 +30,26 @@ def coverage(*arguments, **options):
     return subprocess.run([sys.executable, "-m", "coverage", *arguments], check=False, **options)
 
 
+def is_test_file(path):
+    parts = Path(path).parts
+    name = parts[-1]
+    return ("tests" in parts[:-1] or "test" in parts[:-1] or name.startswith("test_")
+            or name.endswith("_test.py") or name == "conftest.py")
+
+
+def only_tests_warning():
+    """A workflow warning when the data covers no file but tests, else None."""
+    report = coverage("json", "-o", "-", "--quiet", capture_output=True, text=True)
+    files = list(json.loads(report.stdout).get("files", {})) if report.returncode == 0 else []
+    if any(not is_test_file(path) for path in files):
+        return None
+    return ("::warning title=Coverage may not measure your code::Coverage measured "
+            + ("no files" if not files else "only test files")
+            + ", so its total says nothing about the code under test. Code the tests run in a subprocess "
+              "is only measured when coverage follows it: set [run] source to the code, and add "
+              "parallel = true and patch = subprocess to the coverage config.")
+
+
 def main(env=None):
     env = os.environ if env is None else env
     fail_under = env["FAIL_UNDER"]
@@ -36,6 +59,8 @@ def main(env=None):
         return tests.returncode
 
     status = coverage("report", f"--fail-under={fail_under}", "--show-missing", "--skip-covered").returncode
+    if warning := only_tests_warning():
+        print(warning)
     if step_summary := env.get("GITHUB_STEP_SUMMARY"):
         table = coverage("report", "--format=markdown", "--show-missing", "--skip-covered",
                          capture_output=True, text=True).stdout
