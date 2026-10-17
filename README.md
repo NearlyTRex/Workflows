@@ -22,6 +22,28 @@ It detects the stack (`python`, `cpp`, `shell` or `data`) and the version file, 
 | `workflows/release.yml` | Stage two: checks, then tag and publish, building, attesting and attaching any Inno Setup installers at the released version |
 | `dependabot.yml` | Actions, plus pip, docker, docker-compose, npm and git submodules when the repo has them. Pull requests are assigned to the owner of the repo's GitHub origin, or to `--assignee USER` (repeatable); `--no-assignee` for none |
 
+It also writes the files GitHub's community standards look for, from `templates/community`, with
+links filled in from the repo's GitHub `origin`:
+
+| File | What it holds |
+|---|---|
+| `CODE_OF_CONDUCT.md` | Contributor Covenant 2.1; conduct is reported with GitHub's **Report content**, so no address is published |
+| `CONTRIBUTING.md` | Issues and pull requests welcome on a best-effort basis, and how to propose a change |
+| `SECURITY.md` | Private reporting through the repo's **Report a vulnerability** form |
+| `.github/ISSUE_TEMPLATE/` | Bug report and feature request forms; blank issues off, and security reports pointed to private reporting |
+| `.github/pull_request_template.md` | Summary, testing and a short checklist |
+
+Any of these a repo already has is kept, even with `--force`, since those are usually written for
+the repo. For a repo set up before these existed, `--community` writes only the missing ones and
+leaves its workflows alone:
+
+```bash
+python3 scripts/init_repo.py ~/Repositories/SomeRepo --community --dry-run
+python3 scripts/init_repo.py ~/Repositories/SomeRepo --community
+```
+
+`SECURITY.md`'s report form needs private vulnerability reporting, which `--settings` turns on.
+
 Every call is pinned to the commit of this library's latest release, with the tag as a comment:
 
 ```yaml
@@ -444,8 +466,15 @@ Each repo that uses these workflows needs:
   gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
   ```
 
+- **Private vulnerability reporting** (Settings → Advanced Security), for the report form
+  `SECURITY.md` links to:
+
+  ```bash
+  gh api -X PUT repos/OWNER/REPO/private-vulnerability-reporting
+  ```
+
 `init_repo.py` prints this list after writing the files. `init_repo.py TARGET --settings` turns
-both on with `gh`, reading the repo from TARGET's `origin`; add `--dry-run` to see the calls first.
+them on with `gh`, reading the repo from TARGET's `origin`; add `--dry-run` to see the calls first.
 It needs admin rights on the repo.
 
 ## How it fits together
