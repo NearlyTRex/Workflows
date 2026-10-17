@@ -1,6 +1,7 @@
 """run_coverage.py over small projects, with the real coverage.py."""
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -59,6 +60,30 @@ def test_pyproject_config_is_used(tmp_path, monkeypatch, capfd):
 def test_a_pyproject_without_coverage_config(tmp_path, monkeypatch):
     project(tmp_path, monkeypatch, COVERED, "", **{"pyproject.toml": "[project]\nname = 'x'\n"})
     assert not run_coverage.has_own_config()
+
+
+def test_a_parallel_run_is_combined_before_the_report(tmp_path, monkeypatch, capfd):
+    # The code runs in a subprocess coverage follows, which writes data files of its own
+    project(tmp_path, monkeypatch, HALF,
+            "import subprocess, sys\n\ndef test():\n"
+            "    subprocess.run([sys.executable, '-c', 'import app; app.sign(1); app.sign(-1)'], check=True)\n",
+            **{".coveragerc": "[run]\nbranch = true\nparallel = true\npatch = subprocess\ninclude = app.py\n"})
+    assert run() == 0
+    assert not list(tmp_path.glob(".coverage.*"))
+
+
+def test_data_that_will_not_combine_fails_the_run(monkeypatch, capfd):
+    calls = []
+
+    def fake(*arguments, **options):
+        calls.append(arguments[0])
+        output = "Couldn't combine data file .coverage.x\n" if arguments[0] == "combine" else ""
+        return subprocess.CompletedProcess(arguments, 0 if arguments[0] == "run" else 1, output, "")
+
+    monkeypatch.setattr(run_coverage, "coverage", fake)
+    assert run() == 1
+    assert calls == ["run", "combine"]
+    assert "Couldn't combine data file" in capfd.readouterr().out
 
 
 def test_failing_tests_fail_before_the_report(tmp_path, monkeypatch, capfd):
