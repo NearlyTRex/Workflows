@@ -26,7 +26,7 @@ Tailor it by overriding the `shell_sandbox_options` fixture:
     def shell_sandbox_options():
         return {"extra_stubs": ["terraform"], "extra_tools": ["jq"]}
 
-Keys: stubs, extra_stubs, allowed_tools, extra_tools, hidden_dirs, passwd, group.
+Keys: stubs, extra_stubs, allowed_tools, extra_tools, hidden_dirs, accounts, group.
 """
 
 import os
@@ -129,7 +129,7 @@ def quote(value):
 class ShellSandbox:
 
     def __init__(self, work_dir, repo_root, trace_dir=None, hook_file=None, stubs=None, extra_stubs=(),
-                 allowed_tools=None, extra_tools=(), hidden_dirs=None, passwd=None, group=None,
+                 allowed_tools=None, extra_tools=(), hidden_dirs=None, accounts=None, group=None,
                  required=False):
         self.work_dir = str(work_dir)
         self.repo_root = str(repo_root)
@@ -142,7 +142,7 @@ class ShellSandbox:
         self.stub_dir = os.path.join(self.work_dir, "stubs")
         self.tool_dir = os.path.join(self.work_dir, "tools")
         self.calls_log = os.path.join(self.work_dir, "calls.log")
-        self.build_root(BASE_ACCOUNTS if passwd is None else passwd, BASE_GROUPS if group is None else group)
+        self.build_root(BASE_ACCOUNTS if accounts is None else accounts, BASE_GROUPS if group is None else group)
         self.build_tools()
         for name in list(DEFAULT_STUBS if stubs is None else stubs) + list(extra_stubs):
             self.stub(name)
@@ -152,7 +152,7 @@ class ShellSandbox:
     # Building
     ###########################################################
 
-    def build_root(self, passwd, group):
+    def build_root(self, accounts, group):
         for directory in self.hidden_dirs:
             os.makedirs(self.host_path(directory), exist_ok=True)
         for directory in ["/var/lib", "/var/log", "/var/tmp", "/var/www", "/usr/local/bin", "/etc/systemd/system"]:
@@ -171,7 +171,7 @@ class ShellSandbox:
                 source = os.path.join(HOST_ETC, name)
                 if os.path.isdir(source):
                     shutil.copytree(source, os.path.join(etc_dir, name), symlinks=True)
-            self.write("/etc/passwd", passwd)
+            self.write("/etc/passwd", accounts)
             self.write("/etc/group", group)
             self.write("/etc/nsswitch.conf", "passwd: files\ngroup: files\nhosts: files\n")
             self.write("/etc/hosts", "127.0.0.1 localhost\n")
@@ -210,8 +210,8 @@ class ShellSandbox:
         return os.path.lexists(self.host_path(path))
 
     def add_user(self, name, uid=1000, groups=()):
-        with open(self.host_path("/etc/passwd"), "a", encoding="utf-8") as passwd:
-            passwd.write(f"{name}:x:{uid}:{uid}::/home/{name}:/bin/bash\n")
+        with open(self.host_path("/etc/passwd"), "a", encoding="utf-8") as accounts:
+            accounts.write(f"{name}:x:{uid}:{uid}::/home/{name}:/bin/bash\n")
         with open(self.host_path("/etc/group"), "a", encoding="utf-8") as group:
             group.write(f"{name}:x:{uid}:\n")
         if groups:

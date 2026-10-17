@@ -70,7 +70,7 @@ def test_allowed_tools_are_linked(sandbox):
 
 def test_options_override_defaults(tmp_path):
     custom = sandbox_mod.ShellSandbox(tmp_path / "sb", tmp_path, stubs=["only"], allowed_tools=["cat"],
-                                      hidden_dirs=["/srv"], passwd="x", group="y")
+                                      hidden_dirs=["/srv"], accounts="x", group="y")
     assert sorted(os.listdir(custom.stub_dir)) == [".only.stdout", ".sudo.stdout", "only", "sudo"]
     assert os.listdir(custom.tool_dir) == ["cat"]
     assert not custom.exists("/etc/passwd") and custom.exists("/srv")
