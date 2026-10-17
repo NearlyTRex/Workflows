@@ -1,0 +1,4 @@
+# The parser python-ci's shell coverage reads scripts with. Regenerate requirements.txt after editing:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.txt requirements.in
+tree-sitter
+tree-sitter-bash

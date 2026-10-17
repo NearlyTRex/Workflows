@@ -2,7 +2,8 @@ name: Python CI
 
 # Installs the project (from its hash-locked dev requirements when present),
 # lints it with ruff, runs any extra commands, then the tests, which fail
-# below 100% coverage unless coverage-fail-under says otherwise.
+# below 100% coverage unless coverage-fail-under says otherwise. With
+# shell-coverage-source, the bash scripts the tests run are measured too.
 on:
   workflow_call:
     inputs:
@@ -38,6 +39,26 @@ on:
       coverage-fail-under:
         type: string
         default: "100"
+      shell-coverage-source:
+        description: Space-separated scripts or directories (searched for *.sh and *.bash) whose statements the pytest tests must run. Empty leaves shell coverage off
+        type: string
+        default: ""
+      shell-coverage-exclude:
+        description: Space-separated globs of scripts to leave out, such as vendored ones the parser can't read
+        type: string
+        default: ""
+      shell-coverage-fail-under:
+        description: Minimum percent of shell statements run. Empty reports without failing
+        type: string
+        default: "100"
+      shell-coverage-branch:
+        description: Also count the right-hand side of each && and || as a statement that must run
+        type: boolean
+        default: false
+      shell-sandbox:
+        description: Provide the shell_sandbox fixture, which runs scripts as root in a disposable user namespace with stubbed commands
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -97,6 +118,16 @@ jobs:
         env:
           COMMANDS: ${{ inputs.commands }}
         run: bash -euo pipefail -c "$COMMANDS"
+
+      - name: Shell coverage
+        if: inputs.shell-coverage-source != '' || inputs.shell-sandbox
+        uses: $/actions/shell-coverage
+        with:
+          source: ${{ inputs.shell-coverage-source }}
+          exclude: ${{ inputs.shell-coverage-exclude }}
+          fail-under: ${{ inputs.shell-coverage-fail-under }}
+          branch: ${{ inputs.shell-coverage-branch }}
+          sandbox: ${{ inputs.shell-sandbox }}
 
       - name: Tests
         if: '!inputs.coverage'

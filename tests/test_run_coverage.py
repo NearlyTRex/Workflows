@@ -75,3 +75,31 @@ def test_the_threshold_and_the_process_environment(tmp_path, monkeypatch, capfd)
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     monkeypatch.setattr(sys, "argv", ["run_coverage.py"])
     assert run_coverage.main() == 0
+
+
+def test_coverage_of_only_the_tests_warns(tmp_path, monkeypatch, capfd):
+    # The code runs in a subprocess coverage isn't following, so only the test is measured
+    project(tmp_path, monkeypatch, COVERED,
+            "import subprocess, sys\n\ndef test():\n    subprocess.run([sys.executable, 'app.py'], check=True)\n",
+            **{".coveragerc": "[run]\nomit = app.py\n"})
+    (tmp_path / "test_app.py").rename(tmp_path / "test_cli.py")
+    assert run() == 0
+    assert "::warning title=Coverage may not measure your code::Coverage measured only test files" in capfd.readouterr().out
+
+
+def test_measuring_no_files_warns(tmp_path, monkeypatch, capfd):
+    project(tmp_path, monkeypatch, COVERED, "def test():\n    pass\n", **{".coveragerc": "[run]\ninclude = nothing.py\n"})
+    run()
+    assert "Coverage measured no files" in capfd.readouterr().out
+
+
+def test_measured_code_does_not_warn(tmp_path, monkeypatch, capfd):
+    project(tmp_path, monkeypatch, COVERED, "from app import double\n\ndef test():\n    assert double(2) == 4\n")
+    assert run() == 0
+    assert "::warning" not in capfd.readouterr().out
+
+
+def test_what_counts_as_a_test_file():
+    assert all(run_coverage.is_test_file(path) for path in
+               ["tests/helpers.py", "test/x.py", "test_app.py", "app_test.py", "src/conftest.py"])
+    assert not any(run_coverage.is_test_file(path) for path in ["app.py", "src/testing.py", "contest.py"])
