@@ -7,7 +7,10 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt ./
-RUN pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt
+# pip isn't needed at runtime, and it vendors its own copies of libraries such as
+# urllib3, which the image scan would otherwise report against the app
+RUN pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt \
+    && pip uninstall --yes pip
 COPY fixture_app ./fixture_app
 
 USER 1000:1000
