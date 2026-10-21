@@ -73,16 +73,23 @@ def test_ccache_on_linux(tmp_path, capsys):
     assert path == ["/usr/lib/ccache"]
 
 
-def test_ccache_wrappers_can_be_elsewhere(tmp_path, capsys):
-    _, path, _ = run(tmp_path, capsys, RUNNER_OS="Linux", CCACHE_WRAPPERS="/opt/ccache", **CCACHE)
+def test_ccache_on_macos(tmp_path, capsys):
+    env, path, _ = run(tmp_path, capsys, RUNNER_OS="macOS", **CCACHE)
+    assert env["CMAKE_CXX_COMPILER_LAUNCHER"] == "ccache" and env["CCACHE_DIR"] == "/tmp/cc"
+    assert path == ["/opt/homebrew/opt/ccache/libexec"]
+
+
+@pytest.mark.parametrize("os_name", ["Linux", "macOS"])
+def test_ccache_wrappers_can_be_elsewhere(tmp_path, capsys, os_name):
+    _, path, _ = run(tmp_path, capsys, RUNNER_OS=os_name, CCACHE_WRAPPERS="/opt/ccache", **CCACHE)
     assert path == ["/opt/ccache"]
 
 
 @pytest.mark.parametrize("os_name,named", [("Windows", "Windows"), ("", "this runner")])
-def test_ccache_is_skipped_off_linux(tmp_path, capsys, os_name, named):
+def test_ccache_is_skipped_off_linux_and_macos(tmp_path, capsys, os_name, named):
     env, path, out = run(tmp_path, capsys, RUNNER_OS=os_name, **CCACHE)
     assert env == {} and path == []
-    assert f"Linux runners only; not on {named}" in out
+    assert f"Linux and macOS runners only; not on {named}" in out
 
 
 def test_tools_are_put_on_path(tmp_path, capsys):

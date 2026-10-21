@@ -83,7 +83,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file`, `dry-run` (false) | `contents: write` |
 | `attest.yml` | `artifacts` | `id-token: write`, `attestations: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 | `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `pr-branch` (scheduled-update/BASE), `assignees`, `node-version`, `timeout-minutes` (60). Outputs `changed`, `pr-url` | `contents: write`, `pull-requests: write` |
 | `license-year.yml` | `path` (LICENSE), `assignees`. Outputs `pr-url` | `contents: write`, `pull-requests: write` |
@@ -212,11 +212,13 @@ All of them run with the least permission they need. The caller must grant at le
     `health-url` instead.
 - **`cpp-build`:** runs the repo's own build and test commands in bash on any runner (Git Bash on
   Windows), so it fits CMake, a `Setup.py` or a packaging script alike. Around them it installs
-  `apt-packages`, puts MSVC on `PATH` with `msvc` (found with vswhere, so no edition path is
-  hard-coded), restores `cache-paths` keyed on `cache-key-files`, and uploads `artifact-path` as
-  `artifact`. The cache is named by `cache-key`, or else the artifact name, so a CI build and a
-  release build of the same thing can share one. For several platforms or configurations, the
-  caller passes a matrix:
+  `apt-packages` on Linux and `brew-packages` on macOS, puts MSVC on `PATH` with `msvc` (found
+  with vswhere, so no edition path is hard-coded), restores `cache-paths` keyed on
+  `cache-key-files`, and uploads `artifact-path` as `artifact`. The cache is named by
+  `cache-key`, or else the artifact name, so a CI build and a release build of the same thing can
+  share one. `container` runs the whole job inside an image on a Linux runner, which is how a
+  toolchain that ships as an image, such as a console homebrew SDK, builds here. For several
+  platforms or configurations, the caller passes a matrix:
 
   ```yaml
   build:
@@ -236,12 +238,13 @@ All of them run with the least permission they need. The caller must grant at le
   Builds use every core: `parallel` sets `CMAKE_BUILD_PARALLEL_LEVEL`, and `MAKEFLAGS=-j` off
   Windows, where plain `make` would otherwise run one job at a time.
 
-  With `ccache: true` on Linux runners, it also installs ccache and routes the compilers through
-  it, CMake's through its launcher setting and any other build system's through ccache's
-  wrappers first on `PATH`, so a build only recompiles what changed since the last run. Each run
-  saves its ccache under a new key and the next restores the newest one, so the cache follows the
-  code, and the hit rate is printed after the build. A cancelled run saves nothing, since it
-  usually stopped early and its small cache would otherwise be the one the next run restores.
+  With `ccache: true` on Linux and macOS runners, it also installs ccache and routes the
+  compilers through it, CMake's through its launcher setting and any other build system's through
+  ccache's wrappers first on `PATH`, so a build only recompiles what changed since the last run.
+  Each run saves its ccache under a new key and the next restores the newest one, so the cache
+  follows the code, and the hit rate is printed after the build. A cancelled run saves nothing,
+  since it usually stopped early and its small cache would otherwise be the one the next run
+  restores.
 
   When a build fills `ccache-max-size`, ccache evicts entries as it goes and the saved cache
   holds only the end of the build, so the next run misses on the rest. The stats step then

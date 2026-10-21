@@ -18,6 +18,12 @@ on:
       runs-on:
         type: string
         default: ubuntu-latest
+      container:
+        description: >-
+          Image to run the job in, on a Linux runner: a toolchain image such as a console
+          homebrew SDK's, pinned by digest (image@sha256:...). Empty runs on the runner itself.
+        type: string
+        default: ""
       submodules:
         description: false, true or recursive
         type: string
@@ -35,6 +41,10 @@ on:
         default: ""
       apt-packages:
         description: Space-separated packages to apt-get install first; skipped on other runners
+        type: string
+        default: ""
+      brew-packages:
+        description: Space-separated packages to brew install first; skipped off macOS runners
         type: string
         default: ""
       msvc:
@@ -70,7 +80,7 @@ on:
         description: >-
           Install ccache, route the compilers through it (CMake's launcher, and ccache's wrappers
           first on PATH for other build systems), and keep its cache between runs, so a build
-          recompiles only what changed. Linux runners only.
+          recompiles only what changed. Linux and macOS runners.
         type: boolean
         default: false
       ccache-max-size:
@@ -118,6 +128,9 @@ jobs:
   build:
     name: Build
     runs-on: ${{ inputs.runs-on }}
+    # An empty string is not a valid container, so no image means null. The
+    # image is the caller's, who pins it by digest as with any other input.
+    container: ${{ inputs.container || null }} # zizmor: ignore[unpinned-images]
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
@@ -139,6 +152,7 @@ jobs:
         run: git tag -f "$TAG" && git describe --tags --always
 
       # Skipped off Linux, so a matrix can pass one package list to every runner.
+      # A container job usually runs as root, without sudo.
       - name: Install packages
         if: inputs.apt-packages != '' && runner.os == 'Linux'
         shell: bash
@@ -146,8 +160,18 @@ jobs:
           PACKAGES: ${{ inputs.apt-packages }}
         run: |
           read -ra packages <<< "$PACKAGES"
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends "${packages[@]}"
+          sudo=""; if [ "$(id -u)" != 0 ]; then sudo="sudo"; fi
+          $sudo apt-get update
+          $sudo apt-get install -y --no-install-recommends "${packages[@]}"
+
+      - name: Install packages (Homebrew)
+        if: inputs.brew-packages != '' && runner.os == 'macOS'
+        shell: bash
+        env:
+          PACKAGES: ${{ inputs.brew-packages }}
+        run: |
+          read -ra packages <<< "$PACKAGES"
+          brew install "${packages[@]}"
 
       # The same environment a Developer Command Prompt gets, exported to every
       # later step, found with vswhere rather than a hard-coded edition path.
@@ -173,7 +197,7 @@ jobs:
           path: ${{ inputs.cache-paths }}
           key: cpp-build-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}-${{ hashFiles(inputs.cache-key-files || 'CMakeLists.txt') }}
 
-      # Parallel jobs on every core, and ccache on Linux runners: see
+      # Parallel jobs on every core, and ccache on Linux and macOS runners: see
       # actions/build-env.
       - name: Build environment
         uses: $/actions/build-env
@@ -190,7 +214,7 @@ jobs:
       # ends the name, so a cache named foo never restores one named foo-bar.
       - name: Restore ccache
         id: ccache
-        if: inputs.ccache && runner.os == 'Linux'
+        if: inputs.ccache && (runner.os == 'Linux' || runner.os == 'macOS')
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
