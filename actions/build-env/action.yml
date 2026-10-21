@@ -1,8 +1,8 @@
 name: Build environment
 description: >-
   Sets up the environment for a C/C++ build: parallel jobs on every core,
-  optionally ccache (Linux runners), and the ci-phase and ci-clang-tidy commands
-  on PATH. See build_env.py.
+  optionally ccache (Linux and macOS runners), and the ci-phase and ci-clang-tidy
+  commands on PATH. See build_env.py.
 
 inputs:
   parallel:
@@ -24,10 +24,21 @@ inputs:
 runs:
   using: composite
   steps:
+    # A container job usually runs as root, without sudo.
     - name: Install ccache
       if: inputs.ccache == 'true' && runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get install -y --no-install-recommends ccache
+      run: |
+        sudo=""; if [ "$(id -u)" != 0 ]; then sudo="sudo"; fi
+        $sudo apt-get install -y --no-install-recommends ccache
+
+    - name: Install ccache (Homebrew)
+      id: brew-ccache
+      if: inputs.ccache == 'true' && runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install ccache
+        echo "wrappers=$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_OUTPUT"
 
     - name: Export the build environment
       shell: bash
@@ -39,6 +50,7 @@ runs:
         CCACHE_DIR: ${{ inputs.ccache-dir }}
         MAX_SIZE: ${{ inputs.ccache-max-size }}
         SLOPPINESS: ${{ inputs.ccache-sloppiness }}
+        CCACHE_WRAPPERS: ${{ steps.brew-ccache.outputs.wrappers }}
       # The runner's own Python. On Windows python3 can be the Microsoft Store stub.
       run: |
         if [ "$RUNNER_OS" = Windows ]; then python="python"; else python="python3"; fi
