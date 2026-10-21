@@ -242,8 +242,9 @@ All of them run with the least permission they need. The caller must grant at le
   compilers through it, CMake's through its launcher setting and any other build system's through
   ccache's wrappers first on `PATH`, so a build only recompiles what changed since the last run.
   Each run saves its ccache under a new key and the next restores the newest one, so the cache
-  follows the code, and the hit rate is printed after the build. A cancelled run saves nothing, since it
-  usually stopped early and its small cache would otherwise be the one the next run restores.
+  follows the code, and the hit rate is printed after the build. A cancelled run saves nothing,
+  since it usually stopped early and its small cache would otherwise be the one the next run
+  restores.
 
   When a build fills `ccache-max-size`, ccache evicts entries as it goes and the saved cache
   holds only the end of the build, so the next run misses on the rest. The stats step then

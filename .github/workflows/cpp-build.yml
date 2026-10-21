@@ -21,7 +21,7 @@ on:
       container:
         description: >-
           Image to run the job in, on a Linux runner: a toolchain image such as a console
-          homebrew SDK's. Empty runs on the runner itself.
+          homebrew SDK's, pinned by digest (image@sha256:...). Empty runs on the runner itself.
         type: string
         default: ""
       submodules:
@@ -128,8 +128,9 @@ jobs:
   build:
     name: Build
     runs-on: ${{ inputs.runs-on }}
-    # An empty string is not a valid container, so no image means null.
-    container: ${{ inputs.container || null }}
+    # An empty string is not a valid container, so no image means null. The
+    # image is the caller's, who pins it by digest as with any other input.
+    container: ${{ inputs.container || null }} # zizmor: ignore[unpinned-images]
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
