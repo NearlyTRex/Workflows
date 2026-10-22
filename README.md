@@ -26,8 +26,11 @@ It detects the stack (`python`, `cpp`, `shell` or `data`) and the version file, 
 | `workflows/ci.yml` | `python-ci` for Python repos, `cpp-build` on Linux and Windows for CMake repos, `compose-test` per compose file, `inno-setup` per `.iss` script, and `lint` for every repo |
 | `workflows/security.yml` | `security`, `codeql`, `dependency-review` (PRs) and a `container-scan` per Dockerfile. It also runs weekly |
 | `workflows/prepare-release.yml` | Stage one of a release. Only written when a version file is found |
-| `workflows/release.yml` | Stage two: checks, then tag and publish, building, attesting and attaching any Inno Setup installers at the released version |
+| `workflows/release.yml` | Stage two: checks, then tag and publish, building, attesting and attaching any Inno Setup installers at the released version. With `--pypi`, it also builds the sdist and wheel, attaches them, and publishes them to PyPI (see [Publishing to PyPI](#publishing-to-pypi)) |
 | `dependabot.yml` | Actions, plus pip, docker, docker-compose, npm and git submodules when the repo has them. Pull requests are assigned to the owner of the repo's GitHub origin, or to `--assignee USER` (repeatable); `--no-assignee` for none |
+
+It also copies this library's `.markdownlint.yaml`, so `lint` wraps prose at 100 columns there as
+it does here, rather than at rumdl's default 80.
 
 It also writes the files GitHub's community standards look for, from `templates/community`, with
 links filled in from the repo's GitHub `origin`:
@@ -81,6 +84,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `prepare-release.yml` | `bump`, `version-file`, `tag-prefix` (v) | `contents: write`, `pull-requests: write` |
 | `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
 | `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file`, `dry-run` (false) | `contents: write` |
+| `python-build.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-build.txt), `artifact-name` (dist) | `contents: read` |
 | `attest.yml` | `artifacts` | `id-token: write`, `attestations: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
 | `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
@@ -462,6 +466,31 @@ jobs:
 GitHub doesn't run workflows on a PR opened with the workflow token, so don't make checks required
 on release PRs.
 
+## Publishing to PyPI
+
+`init_repo.py TARGET --pypi` writes a `release.yml` that runs `python-build.yml` after the checks,
+attaches the sdist and wheel to the GitHub Release, then publishes them to PyPI under the
+`[project]` name in `pyproject.toml`.
+
+The publish job stays in the repo's own `release.yml`, calling the `pypi-publish` action as a step.
+PyPI's trusted publishing checks the workflow file that runs the job and does not accept a
+reusable workflow from another repository, so a `python-publish.yml` here could never publish.
+Building has no such limit, so it is a reusable workflow like the rest.
+
+The repo needs:
+
+- **`requirements-build.txt`**, hash-locked, listing `build` and its build backend. The build runs
+  without isolation, so nothing unpinned is downloaded:
+
+  ```bash
+  printf 'build\nsetuptools\n' > requirements-build.in
+  pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements-build.txt requirements-build.in
+  ```
+
+- **A trusted publisher on PyPI** (Account → Publishing; a pending one before the first release)
+  naming the repo, workflow `release.yml` and environment `pypi`.
+- **A `pypi` environment** in the repo (Settings → Environments).
+
 ## Repo settings
 
 Each repo that uses these workflows needs:
@@ -482,6 +511,12 @@ Each repo that uses these workflows needs:
   ```bash
   gh api -X PUT repos/OWNER/REPO/private-vulnerability-reporting
   ```
+
+- **A "Protect main" ruleset** (Settings → Rules → Rulesets) on the default branch: every change
+  arrives by pull request, with no approving review required since a sole maintainer can't approve
+  their own, and the branch can't be force-pushed or deleted. Nobody bypasses it. Tags are
+  untouched, so `release.yml` still tags releases. `--settings` updates a ruleset of that name
+  rather than adding a second one.
 
 `init_repo.py` prints this list after writing the files. `init_repo.py TARGET --settings` turns
 them on with `gh`, reading the repo from TARGET's `origin`; add `--dry-run` to see the calls first.
@@ -518,6 +553,8 @@ so one pin fixes the whole chain. The actions are:
 | `clang-format` | Checks C and C++ formatting when the repo has a `.clang-format`, with its own hash-locked clang-format |
 | `check-tracked-files` | Fails when a file that could hold a credential is tracked |
 | `check-markdown-fences` | Fails on Markdown code fences that don't close, which hide text from the lint rules |
+| `python-build` | Builds the sdist and wheel without isolation, from the repo's hash-locked build backend, for `python-build` |
+| `pypi-publish` | Publishes the `python-build` artifact to PyPI through trusted publishing; a step in the caller's own job, never a reusable workflow |
 
 Every third-party action, tool and image is pinned by hash or digest. Dependabot updates all of
 them weekly, 7 days behind upstream.

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -378,6 +379,17 @@ def test_repin_moves_only_the_pins(tmp_path, capsys, monkeypatch):
     assert (repo / ".github/workflows/other.yml").read_text().endswith("@" + "b" * 40 + " # v9\n")
 
 
+def test_repin_moves_action_pins_too(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path, PYPI)
+    init_repo.main([str(repo), "--ref", "HEAD", "--pypi"])
+    newer = "c" * 40
+    monkeypatch.setattr(init_repo, "resolve_ref", lambda ref: (newer, "v9.9.9"))
+
+    assert init_repo.main([str(repo), "--repin"]) == 0
+    text = (repo / ".github/workflows/release.yml").read_text()
+    assert f"/actions/pypi-publish@{newer} # v9.9.9" in text and SHA not in text
+
+
 def test_repin_dry_run_writes_nothing(tmp_path, capsys, monkeypatch):
     repo = make_repo(tmp_path, PYTHON)
     init_repo.main([str(repo), "--ref", "HEAD"])
@@ -444,17 +456,69 @@ def test_only_pull_request_runs_are_cancelled(tmp_path):
         assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
-def fake_gh(monkeypatch, fails=False):
-    """Let git through, and record gh calls instead of running them."""
+PYPI = {
+    "pyproject.toml": '[project]\nname = "some-package"\nversion = "1.0.0"\n',
+    "some_package/__init__.py": "",
+}
+
+
+def test_pypi_releases_build_attach_and_publish_the_package(tmp_path):
+    repo = make_repo(tmp_path, PYPI)
+
+    assert init_repo.main([str(repo), "--ref", "HEAD", "--pypi"]) == 0
+
+    jobs = load(repo, ".github/workflows/release.yml")["jobs"]
+    assert list(jobs) == ["pending", "check", "build", "release", "publish"]
+    assert jobs["build"]["uses"].endswith("/.github/workflows/python-build.yml@" + SHA)
+    assert jobs["release"]["needs"] == "build"
+    assert jobs["release"]["with"] == {"version-file": "pyproject.toml", "assets": "dist", "checksums": True}
+    publish = jobs["publish"]
+    assert publish["if"] == "needs.release.outputs.released == 'true'"
+    assert publish["environment"] == {
+        "name": "pypi", "url": "https://pypi.org/project/some-package/${{ needs.release.outputs.version }}/"}
+    assert publish["permissions"] == {"id-token": "write"}
+    assert publish["steps"] == [{"uses": "NearlyTRex/Workflows/actions/pypi-publish@" + SHA}]
+
+
+def test_a_release_without_pypi_publishes_nothing(tmp_path):
+    repo = make_repo(tmp_path, PYPI)
+
+    assert init_repo.main([str(repo), "--ref", "HEAD"]) == 0
+
+    assert list(load(repo, ".github/workflows/release.yml")["jobs"]) == ["pending", "check", "release"]
+
+
+@pytest.mark.parametrize("files, message", [
+    ({"VERSION": "1.0.0\n", "a.sh": ""}, "--pypi needs"),
+    ({"pyproject.toml": '[project]\nversion = "1.0.0"\n'}, "--pypi needs a [project] name"),
+])
+def test_pypi_needs_a_named_project(tmp_path, capsys, files, message):
+    repo = make_repo(tmp_path, files)
+
+    assert init_repo.main([str(repo), "--ref", "HEAD", "--pypi"]) == 1
+    assert message in capsys.readouterr().err
+
+
+def fake_gh(monkeypatch, fails=False, rulesets=(), payloads=None):
+    """Let git through, and record gh calls instead of running them. Listing rulesets
+    answers with rulesets; what a call is given on stdin goes in payloads."""
     calls, real_run = [], subprocess.run
 
     def run(command, **kwargs):
         if command[0] != "gh":
             return real_run(command, **kwargs)
         calls.append(command)
-        return subprocess.CompletedProcess(command, 1 if fails else 0, "", "HTTP 403: Must have admin rights")
+        if payloads is not None and kwargs.get("input") is not None:
+            payloads.append(json.loads(kwargs["input"]))
+        stdout = json.dumps(list(rulesets)) if command[-1].endswith("/rulesets") else ""
+        return subprocess.CompletedProcess(command, 1 if fails else 0, stdout, "HTTP 403: Must have admin rights")
     monkeypatch.setattr(init_repo.subprocess, "run", run)
     return calls
+
+
+def ruleset_calls(slug, method="POST", path="rulesets"):
+    return [["gh", "api", f"repos/{slug}/rulesets"],
+            ["gh", "api", "-X", method, f"repos/{slug}/{path}", "--input", "-"]]
 
 
 def with_origin(repo, url="git@github.com:Someone/App.git"):
@@ -474,16 +538,19 @@ def test_settings_turns_on_what_the_workflows_need(tmp_path, capsys, monkeypatch
         ["gh", "api", "-X", "PUT", "repos/Someone/App/actions/permissions/workflow",
          "-f", "default_workflow_permissions=read", "-F", "can_approve_pull_request_reviews=true"],
         ["gh", "api", "-X", "PUT", "repos/Someone/App/private-vulnerability-reporting"],
+        *ruleset_calls("Someone/App"),
     ]
     out = capsys.readouterr().out
     assert "Set: Actions may open pull requests" in out and "Someone/App is set up" in out
+    assert "Set: pull requests required for the default branch" in out
 
 
 def test_settings_without_release_workflows(tmp_path, monkeypatch):
     repo = with_origin(make_repo(tmp_path, {"a.sh": ""}), "https://github.com/Someone/Scripts")
     calls = fake_gh(monkeypatch)
     assert init_repo.main([str(repo), "--settings"]) == 0
-    assert calls == [["gh", "api", "-X", "PUT", "repos/Someone/Scripts/vulnerability-alerts"]]
+    assert calls == [["gh", "api", "-X", "PUT", "repos/Someone/Scripts/vulnerability-alerts"],
+                     *ruleset_calls("Someone/Scripts")]
 
 
 def test_settings_dry_run_only_prints(tmp_path, capsys, monkeypatch):
@@ -494,6 +561,27 @@ def test_settings_dry_run_only_prints(tmp_path, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "Would run (Dependabot alerts" in out
     assert "gh api -X PUT repos/Someone/App/vulnerability-alerts" in out and "is set up" not in out
+    assert "Would create or update the 'Protect main' ruleset" in out and '"~DEFAULT_BRANCH"' in out
+
+
+def test_settings_protect_the_default_branch(tmp_path, monkeypatch):
+    repo = with_origin(make_repo(tmp_path, {"a.sh": ""}))
+    payloads = []
+    fake_gh(monkeypatch, payloads=payloads)
+    assert init_repo.main([str(repo), "--settings"]) == 0
+    assert payloads == [init_repo.branch_ruleset()]
+    ruleset = payloads[0]
+    assert ruleset["conditions"]["ref_name"]["include"] == ["~DEFAULT_BRANCH"]
+    assert [rule["type"] for rule in ruleset["rules"]] == ["pull_request", "non_fast_forward", "deletion"]
+    assert ruleset["rules"][0]["parameters"]["required_approving_review_count"] == 0
+    assert ruleset["bypass_actors"] == []
+
+
+def test_settings_update_the_ruleset_rather_than_add_another(tmp_path, monkeypatch):
+    repo = with_origin(make_repo(tmp_path, {"a.sh": ""}))
+    calls = fake_gh(monkeypatch, rulesets=[{"id": 7, "name": "Other"}, {"id": 42, "name": "Protect main"}])
+    assert init_repo.main([str(repo), "--settings"]) == 0
+    assert calls[-2:] == ruleset_calls("Someone/App", "PUT", "rulesets/42")
 
 
 @pytest.mark.parametrize("remote", [None, "https://gitlab.com/Someone/App.git"])
@@ -521,6 +609,7 @@ COMMUNITY = [
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
+    ".markdownlint.yaml",
 ]
 
 
@@ -551,6 +640,15 @@ def test_issue_forms_are_valid_and_point_security_reports_away(tmp_path):
     for form in ["bug_report.yml", "feature_request.yml"]:
         body = load(repo, f".github/ISSUE_TEMPLATE/{form}")["body"]
         assert any(item.get("validations", {}).get("required") for item in body), form
+
+
+def test_the_library_markdownlint_config_is_copied_as_it_is(tmp_path):
+    repo = with_community_origin(make_repo(tmp_path, {"README.md": ""}))
+
+    assert init_repo.main([str(repo), "--community"]) == 0
+
+    assert (repo / ".markdownlint.yaml").read_text() == (ROOT / ".markdownlint.yaml").read_text()
+    assert load(repo, ".markdownlint.yaml")["MD013"]["line_length"] == 100
 
 
 def test_a_repos_own_community_files_are_kept(tmp_path, capsys):

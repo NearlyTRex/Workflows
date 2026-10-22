@@ -2,7 +2,8 @@
 
 Usage:
     init_repo.py TARGET [--stack python|cpp|shell|data] [--version-file FILE | --no-release]
-                        [--assignee USER ... | --no-assignee] [--ref REF] [--force] [--dry-run]
+                        [--pypi] [--assignee USER ... | --no-assignee] [--ref REF] [--force]
+                        [--dry-run]
     init_repo.py TARGET --repin [--ref REF]
     init_repo.py TARGET --settings [--dry-run]
     init_repo.py TARGET --community [--dry-run]
@@ -14,7 +15,9 @@ Writes into TARGET/.github:
     workflows/security.yml         zizmor, gitleaks, pip-audit, CodeQL, dependency review,
                                    and a container scan per Dockerfile; also weekly
     workflows/prepare-release.yml  stage one of a release (when a version file is found)
-    workflows/release.yml          stage two of a release, attesting and attaching the installers
+    workflows/release.yml          stage two of a release, attesting and attaching the installers;
+                                   with --pypi, building the sdist and wheel, attaching them,
+                                   and publishing them to PyPI through trusted publishing
     dependabot.yml                 actions, plus pip, docker, docker-compose, npm and
                                    submodules when present; its pull requests are assigned
                                    to --assignee, or by default to the owner of TARGET's
@@ -25,13 +28,19 @@ Every library reference is pinned to the commit of REF (default: this repo's lat
 tag) with the tag as a comment, which is what lets Dependabot bump the pin when the
 library is released. Existing files are left alone unless --force is given.
 
+--pypi is for a Python package published to PyPI under the name in its pyproject.toml.
+The publish job stays in TARGET's own release.yml, since PyPI's trusted publishing does not
+accept a reusable workflow; PyPI needs a trusted publisher for release.yml and the pypi
+environment, and TARGET a requirements-build.txt locking build and its build backend.
+
 --repin moves every library pin in TARGET's workflows to REF and changes nothing else,
 so customized callers can be upgraded without regenerating them.
 
 Also writes the community health files GitHub's community standards look for, from
 templates/community: CODE_OF_CONDUCT.md, CONTRIBUTING.md, SECURITY.md, issue forms and a
-pull request template, linked to TARGET's GitHub origin. Any of these TARGET already has
-is kept, even with --force, since those are usually written for the repo.
+pull request template, linked to TARGET's GitHub origin; and this library's
+.markdownlint.yaml, so the lint job wraps prose at 100 columns there too. Any of these
+TARGET already has is kept, even with --force, since those are usually written for the repo.
 
 --community writes only those files, so a repo set up before they existed can take them
 without regenerating its workflows.
@@ -39,19 +48,26 @@ without regenerating its workflows.
 --settings turns on, with gh, the GitHub settings TARGET's workflows need: Dependabot
 alerts (and with them the dependency graph), letting Actions open pull requests when it
 has prepare-release.yml, and private vulnerability reporting when it has SECURITY.md.
+It also protects the default branch with a ruleset: changes arrive by pull request, and
+it can't be force-pushed or deleted. A ruleset of the same name is updated, not doubled.
 It changes nothing in TARGET itself.
 """
 
 import argparse
 import importlib.util
+import json
 import re
 import shlex
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 LIBRARY_ROOT = Path(__file__).resolve().parent.parent
 COMMUNITY_TEMPLATES = LIBRARY_ROOT / "templates" / "community"
+# The library's own lint configs, copied as they are, so every repo's lint job judges by
+# the same rules: prose wraps at 100 columns rather than the linter's default 80
+SHARED_CONFIGS = [".markdownlint.yaml"]
 DEFAULT_LIBRARY = "NearlyTRex/Workflows"
 
 _spec = importlib.util.spec_from_file_location("version", LIBRARY_ROOT / "actions" / "version" / "version.py")
@@ -93,12 +109,14 @@ def origin_owner(target):
 def community_files(slug):
     """The community health files from templates/community, filled in for the GitHub repo
     OWNER/REPO: the code of conduct, contributing guide, security policy, and issue and pull
-    request templates."""
+    request templates; plus the shared lint configs."""
     files = {}
     for path in sorted(COMMUNITY_TEMPLATES.rglob("*")):
         if path.is_file():
             text = path.read_text().replace("{{repo}}", slug).replace("{{name}}", slug.split("/")[1])
             files[path.relative_to(COMMUNITY_TEMPLATES).as_posix()] = text
+    for name in SHARED_CONFIGS:
+        files[name] = (LIBRARY_ROOT / name).read_text()
     return files
 
 
@@ -237,6 +255,9 @@ class Renderer:
 
     def uses(self, workflow):
         return f"{self.library}/.github/workflows/{workflow}.yml@{self.sha} # {self.label}"
+
+    def uses_action(self, action):
+        return f"{self.library}/actions/{action}@{self.sha} # {self.label}"
 
     def ci(self, stack, files=()):
         names = {Path(f).name for f in files}
@@ -402,11 +423,13 @@ jobs:
       version-file: {version_file}
 """
 
-    def release(self, stack, version_file, files=()):
+    def release(self, stack, version_file, files=(), pypi=None):
         check = "python-ci" if stack == "python" else "lint"
         scripts = installer_scripts(files)
         if scripts:
             return self.release_with_installers(check, version_file, scripts)
+        if pypi:
+            return self.release_to_pypi(version_file, pypi)
         return f"""name: Release
 
 # Tags and publishes the version in {version_file} once, after the checks pass.
@@ -486,6 +509,72 @@ updates:
 {(chr(10) * 2).join(blocks)}
 """
 
+
+    def release_to_pypi(self, version_file, project):
+        return f"""name: Release
+
+# Tags and publishes the version in {version_file} once, after the checks pass:
+# a GitHub Release with the sdist and wheel attached, then the same files on
+# PyPI. Pushes that don't change the version find the tag already there, and
+# run nothing else: CI has already tested them.
+on:
+  push:
+    branches: [main]
+
+permissions: {{}}
+
+jobs:
+  pending:
+    name: Pending
+    uses: {self.uses("release-check")}
+    permissions:
+      contents: read
+    with:
+      version-file: {version_file}
+
+  check:
+    name: Check
+    needs: pending
+    if: needs.pending.outputs.pending == 'true'
+    uses: {self.uses("python-ci")}
+    permissions:
+      contents: read
+
+  build:
+    name: Build
+    needs: check
+    uses: {self.uses("python-build")}
+    permissions:
+      contents: read
+
+  release:
+    name: Release
+    needs: build
+    uses: {self.uses("release")}
+    permissions:
+      contents: write
+    with:
+      version-file: {version_file}
+      assets: dist
+      checksums: true
+
+  # A job of this file rather than a reusable workflow: PyPI's trusted
+  # publisher names this file, release.yml, and the pypi environment, so no
+  # token is stored, and it accepts no workflow called from another repository
+  publish:
+    name: Publish to PyPI
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/{project}/${{{{ needs.release.outputs.version }}}}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: {self.uses_action("pypi-publish")}
+"""
 
     def release_with_installers(self, check, version_file, scripts):
         installers = []
@@ -569,7 +658,8 @@ def repin(target, ref=None, dry_run=False):
     """
     target = Path(target).resolve()
     sha, label = resolve_ref(ref)
-    pattern = re.compile(rf"({re.escape(library_name())}/\.github/workflows/[\w.-]+\.ya?ml)@[0-9a-f]{{40}}(?: # \S+)?")
+    pattern = re.compile(
+        rf"({re.escape(library_name())}/(?:\.github/workflows/[\w.-]+\.ya?ml|actions/[\w.-]+))@[0-9a-f]{{40}}(?: # \S+)?")
     changed, current = [], []
     for path in sorted((target / ".github" / "workflows").glob("*.y*ml")):
         text = path.read_text()
@@ -604,21 +694,85 @@ def settings_commands(target):
     return slug, commands
 
 
+RULESET_NAME = "Protect main"
+RULESET_PURPOSE = "pull requests required for the default branch, which can't be force-pushed or deleted"
+
+
+def branch_ruleset():
+    """The default branch's ruleset: every change by pull request, though one needs no
+    approving review, since a sole maintainer can't approve their own; no force pushes, no
+    deletion, and no one may bypass it. Release tags are untouched, so release.yml still tags."""
+    return {
+        "name": RULESET_NAME,
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+        "rules": [
+            {"type": "pull_request", "parameters": {
+                "required_approving_review_count": 0,
+                "dismiss_stale_reviews_on_push": False,
+                "required_reviewers": [],
+                "require_code_owner_review": False,
+                "require_last_push_approval": False,
+                "required_review_thread_resolution": False,
+                "allowed_merge_methods": ["merge", "squash", "rebase"],
+            }},
+            {"type": "non_fast_forward"},
+            {"type": "deletion"},
+        ],
+        "bypass_actors": [],
+    }
+
+
+def run_gh(command, payload=None):
+    result = subprocess.run(command, input=payload, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise InitError(f"{shlex.join(command)} failed: {(result.stderr or result.stdout).strip()}")
+    return result.stdout
+
+
+def ruleset_command(slug):
+    """The call that writes the ruleset: an update of the one with its name, else a create."""
+    existing = [ruleset["id"] for ruleset in json.loads(run_gh(["gh", "api", f"repos/{slug}/rulesets"]))
+                if ruleset["name"] == RULESET_NAME]
+    if existing:
+        return ["gh", "api", "-X", "PUT", f"repos/{slug}/rulesets/{existing[0]}", "--input", "-"]
+    return ["gh", "api", "-X", "POST", f"repos/{slug}/rulesets", "--input", "-"]
+
+
 def apply_settings(target, dry_run=False):
-    """Run settings_commands, or with dry_run print them. Returns the repository's slug."""
+    """Run settings_commands and write the branch ruleset, or with dry_run print what would
+    run. Returns the repository's slug."""
     slug, commands = settings_commands(target)
-    for purpose, command in commands:
-        if dry_run:
+    payload = json.dumps(branch_ruleset(), indent=2)
+    if dry_run:
+        for purpose, command in commands:
             print(f"Would run ({purpose}):\n  {shlex.join(command)}")
-            continue
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
-            raise InitError(f"{shlex.join(command)} failed: {(result.stderr or result.stdout).strip()}")
+        print(f"Would create or update the {RULESET_NAME!r} ruleset ({RULESET_PURPOSE}):\n"
+              f"  gh api -X POST repos/{slug}/rulesets --input -   (PUT to its id when it exists)\n"
+              + "\n".join("  " + line for line in payload.splitlines()))
+        return slug
+    for purpose, command in commands:
+        run_gh(command)
         print(f"Set: {purpose}")
+    run_gh(ruleset_command(slug), payload)
+    print(f"Set: {RULESET_PURPOSE}")
     return slug
 
 
-def plan(target, stack=None, version_file=None, release=True, ref=None, assignees=None):
+def pypi_project(target):
+    """The [project] name in target's pyproject.toml, which is its name on PyPI."""
+    path = target / "pyproject.toml"
+    if not path.is_file():
+        raise InitError(f"--pypi needs {path}")
+    with path.open("rb") as handle:
+        name = tomllib.load(handle).get("project", {}).get("name")
+    if not name:
+        raise InitError(f"--pypi needs a [project] name in {path}")
+    return name
+
+
+def plan(target, stack=None, version_file=None, release=True, ref=None, assignees=None, pypi=False):
     """assignees None means the owner of target's GitHub origin, when it has one."""
     target = Path(target).resolve()
     if not target.is_dir():
@@ -642,7 +796,8 @@ def plan(target, stack=None, version_file=None, release=True, ref=None, assignee
     }
     if release and version_file:
         outputs[".github/workflows/prepare-release.yml"] = renderer.prepare_release(version_file)
-        outputs[".github/workflows/release.yml"] = renderer.release(stack, version_file, files)
+        project = pypi_project(target) if pypi else None
+        outputs[".github/workflows/release.yml"] = renderer.release(stack, version_file, files, project)
     warnings = lock_warnings(target, hashed_requirement_files(target, files))
     return target, stack, version_file, outputs, warnings
 
@@ -660,6 +815,8 @@ def main(argv=None):
     parser.add_argument("--stack", choices=["python", "cpp", "shell", "data"])
     parser.add_argument("--version-file", help="File holding the version (default: detected)")
     parser.add_argument("--no-release", action="store_true", help="Skip the release workflows")
+    parser.add_argument("--pypi", action="store_true",
+                        help="Build the package and publish it to PyPI as part of each release")
     parser.add_argument("--ref", help="Library tag or commit to pin (default: latest tag)")
     assignee = parser.add_mutually_exclusive_group()
     assignee.add_argument("--assignee", action="append", metavar="USER",
@@ -715,7 +872,7 @@ def main(argv=None):
     try:
         target, stack, version_file, outputs, warnings = plan(
             args.target, args.stack, args.version_file, not args.no_release, args.ref,
-            [] if args.no_assignee else args.assignee)
+            [] if args.no_assignee else args.assignee, args.pypi)
     except (InitError, version_tool.VersionError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -749,8 +906,9 @@ def main(argv=None):
         print(f"  warning: {warning}")
 
     if not args.dry_run:
-        print("\nRepo settings these workflows need (Settings → Advanced Security, and Actions → General):")
+        print("\nRepo settings these workflows need (Settings → Advanced Security, Rules, and Actions → General):")
         print("  - Dependency graph and Dependabot alerts, for dependency review and Dependabot")
+        print("  - A ruleset requiring pull requests for the default branch (Settings → Rules)")
         if version_file:
             print("  - \"Allow GitHub Actions to create and approve pull requests\", for prepare-release")
         if (target / "SECURITY.md").exists():

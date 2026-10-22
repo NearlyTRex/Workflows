@@ -1,0 +1,4 @@
+# What python-build.yml builds this fixture with. Regenerate requirements-build.txt after editing:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements-build.txt requirements-build.in
+build
+setuptools

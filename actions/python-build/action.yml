@@ -1,0 +1,34 @@
+name: Python build
+description: >-
+  Builds a Python project's sdist and wheel into dist/. The build backend comes
+  from the project's hash-locked build requirements, installed into the
+  project's Python, and the build runs without isolation, so nothing unpinned
+  is downloaded. Needs the project's Python already set up.
+
+inputs:
+  lock-file:
+    description: >-
+      Hash-locked requirements holding build and the project's build backend,
+      relative to the working directory, such as a requirements-build.txt
+      pip-compiled from a requirements-build.in listing build and setuptools
+    required: false
+    default: requirements-build.txt
+  working-directory:
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        LOCK: ${{ inputs.lock-file }}
+      run: |
+        if [ ! -f "$LOCK" ]; then
+          echo "::error::$LOCK not found; pip-compile --generate-hashes --allow-unsafe a requirements-build.in listing build and the build backend"
+          exit 1
+        fi
+        python -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "$LOCK"
+        python -m build --no-isolation
