@@ -57,6 +57,17 @@ jobs:
       shell-coverage-branch: true
       shell-sandbox: true
 
+  # The fixture built from its hash-locked backend, as a release builds a
+  # package for PyPI; publishing itself needs a real trusted publisher
+  fixture-build:
+    name: Fixture build
+    uses: $/.github/workflows/python-build.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixtures/python-app
+      artifact-name: fixture-dist
+
   lint:
     name: Lint
     uses: $/.github/workflows/lint.yml

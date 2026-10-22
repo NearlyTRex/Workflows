@@ -1,0 +1,49 @@
+name: Python Build
+
+# Builds the sdist and wheel and uploads them as an artifact, for release.yml
+# to attach to the GitHub Release and for actions/pypi-publish to publish.
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: "3.12"
+      working-directory:
+        type: string
+        default: "."
+      lock-file:
+        description: Hash-locked build requirements, relative to the working directory
+        type: string
+        default: requirements-build.txt
+      artifact-name:
+        type: string
+        default: dist
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - uses: $/actions/python-build
+        with:
+          lock-file: ${{ inputs.lock-file }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.working-directory }}/dist/
+          if-no-files-found: error
