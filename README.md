@@ -579,6 +579,15 @@ python3 -m venv .venv && .venv/bin/pip install --require-hashes --no-deps -r req
 
 This repo holds itself to the same 100% gate.
 
+The tests mirror the repository: `actions/<name>/<script>.py` is tested in
+`tests/<suite>/actions/<name>/test_<script>.py`, and `scripts/` likewise. A test that runs a program
+outside the process, `git` included, is in `tests/integration` and declares it with
+`pytest.mark.requires_binary`; the rest are in `tests/unit`. Scripts are loaded with
+`script_helpers.load_script`, and scratch repositories come from `git_helpers`.
+[pytest-testrex](https://github.com/NearlyTRex/TestRex)'s meta suite, `tests/unit/meta`, holds every
+test to that layout and to its quality rules, and the code to the documentation and coding
+standards in `pyproject.toml`'s `[tool.testrex]`, whose baseline counts only ever go down.
+
 `self-ci.yml` and `self-security.yml` run this repo's checks through its own reusable workflows.
 The fixtures in `tests/fixtures` go through `python-ci`, `cpp-build`, `compose-test`,
 `inno-setup` and `container-scan`, and `release.yml` runs as a dry run over the C++ fixture's

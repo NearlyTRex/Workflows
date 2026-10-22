@@ -51,7 +51,7 @@ def parse(version):
 
 
 def read(path):
-    text = Path(path).read_text()
+    text = Path(path).read_text(encoding="utf-8")
     start, end = locate(Path(path), text)
     return text[start:end]
 
@@ -73,10 +73,10 @@ def next_version(current, spec):
 
 def bump(path, spec):
     path = Path(path)
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     start, end = locate(path, text)
     new = next_version(text[start:end], spec)
-    path.write_text(text[:start] + new + text[end:])
+    path.write_text(text[:start] + new + text[end:], encoding="utf-8")
     return new
 
 
