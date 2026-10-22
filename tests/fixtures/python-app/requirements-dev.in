@@ -1,4 +1,6 @@
 -r requirements.in
 pytest
+# Shell coverage of scripts/ and the shell_sandbox fixture, as python-ci's shell inputs expect
+pytest-testrex[shell]>=0.1.2
 # Builds the editable install in CI
 setuptools

@@ -24,7 +24,7 @@ def has_own_config():
     if Path(".coveragerc").is_file():
         return True
     pyproject = Path("pyproject.toml")
-    return pyproject.is_file() and re.search(r"(?m)^\[tool\.coverage", pyproject.read_text()) is not None
+    return pyproject.is_file() and re.search(r"(?m)^\[tool\.coverage", pyproject.read_text(encoding="utf-8")) is not None
 
 
 def coverage(*arguments, **options):

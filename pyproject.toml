@@ -1,0 +1,22 @@
+# Settings for tools that read pyproject.toml. This repository is not a Python package:
+# CI installs requirements-dev.txt and runs the tests, and nothing builds it.
+
+[tool.testrex]
+tests_dir = "tests"
+min_test_files = 20
+library_targets = ["actions", "scripts"]
+# Library code is documented with docstrings, in at most three lines before any sections.
+# Every script is a command, printing annotations and exiting with a status, so no-print
+# and no-exit don't apply.
+doc_style = "docstring"
+doc_max_lines = 3
+standards = [
+    "mutable-defaults", "bare-except", "import-time-io", "no-narration", "commented-out-code",
+    "long-functions", "long-modules",
+]
+
+[tool.testrex.baseline]
+# Lowered as each is fixed, never raised
+documented = 111
+long-functions = 9
+long-modules = 1

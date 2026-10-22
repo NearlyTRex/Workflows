@@ -3,7 +3,5 @@
 pytest
 pyyaml
 clang-format
-# The shell coverage plugin's parser, and shfmt to cross-check it against
-tree-sitter
-tree-sitter-bash
-shfmt-py
+# The meta suite these tests are held to
+pytest-testrex>=0.1.2

@@ -208,12 +208,9 @@ def hashed_requirement_files(target, files):
 
 
 def lock_warnings(target, requirement_files):
-    """Hash-locked files Dependabot can't regenerate.
-
-    It only maintains pip-compile output compiled from a .in file and named after it
-    (requirements.in -> requirements.txt). A lock compiled from pyproject.toml, or named
-    *.lock, gets its pyproject.toml or .in ranges bumped while the lock itself goes stale.
-    """
+    """Hash-locked files Dependabot can't regenerate: it maintains only a requirements*.txt
+    pip-compiled from the .in file it is named after, so a lock compiled from pyproject.toml,
+    or named *.lock, goes stale while its ranges are bumped."""
     warnings = []
     for name in requirement_files:
         header = (target / name).read_text(errors="ignore")[:2000]
@@ -651,11 +648,9 @@ jobs:
 
 
 def repin(target, ref=None, dry_run=False):
-    """Point every library reference in target's workflows at ref.
+    """Point every library reference in target's workflows at ref; with dry_run, write nothing.
 
-    Returns the files that change, the files already pinned there, and the ref's label.
-    With dry_run nothing is written.
-    """
+    Returns the files that change, the files already pinned there, and the ref's label."""
     target = Path(target).resolve()
     sha, label = resolve_ref(ref)
     pattern = re.compile(

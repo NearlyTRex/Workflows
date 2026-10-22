@@ -117,7 +117,10 @@ All of them run with the least permission they need. The caller must grant at le
   - **Shell coverage:** `shell-coverage-source` names scripts, or directories searched for `*.sh`
     and `*.bash`, that the pytest tests must run. The tests run them with
     `subprocess.run(["bash", "scripts/x.sh", ...])`; every bash they start is traced, and the run
-    fails below `shell-coverage-fail-under`, 100 by default, or empty to only report.
+    fails below `shell-coverage-fail-under`, 100 by default, or empty to only report. It and the
+    shell sandbox are [pytest-testrex](https://github.com/NearlyTRex/TestRex)'s plugins, so the
+    repo lists `pytest-testrex[shell]` in its hash-locked test requirements; the job fails, saying
+    so, when it doesn't.
 
     ```yaml
     with:
@@ -159,9 +162,8 @@ All of them run with the least permission they need. The caller must grant at le
     - **Runner:** the workflow lets user namespaces through on runners that restrict them, and
       fails sandbox tests rather than skipping them if they're still unavailable. Locally they
       skip where namespaces are unavailable, such as on macOS.
-    - **Locally:** install [the parser](actions/shell-coverage/requirements.txt) and run
-      `PYTHONPATH=<this repo>/actions/shell-coverage pytest -p pytest_shell_cov -p
-      pytest_shell_sandbox --shell-cov-source scripts`.
+    - **Locally:** with the test requirements installed, run
+      `pytest --shell-cov-source scripts --shell-cov-fail-under 100`.
 - **`lint`:** shellchecks every tracked shell script, found by its `*.sh` or `*.bash` extension
   or by a `sh`, `bash`, `dash` or `ksh` shebang, checks that every tracked `*.json` and `*.toml`
   file parses, and lints Markdown with [rumdl](https://github.com/rvben/rumdl), which
@@ -541,7 +543,7 @@ so one pin fixes the whole chain. The actions are:
 |---|---|
 | `setup-tools` | zizmor, pip-audit, ruff, shellcheck, rumdl and yamllint from [`requirements.txt`](actions/setup-tools/requirements.txt), installed with hashes into a private venv |
 | `coverage` | Runs the tests under hash-locked coverage.py and enforces the threshold |
-| `shell-coverage` | Loads the shell coverage and sandbox pytest plugins into the job's later pytest runs |
+| `shell-coverage` | Turns pytest-testrex's shell coverage and sandbox on for the job's later pytest runs |
 | `version` | Reads or bumps the version; [`version.py`](actions/version/version.py) runs locally too |
 | `zizmor` | zizmor with [this config](actions/zizmor/zizmor.yml) |
 | `gitleaks`, `trivy`, `trivy-config`, `actionlint` | Container actions. Their `Dockerfile` pins the image by digest |
@@ -577,6 +579,15 @@ python3 -m venv .venv && .venv/bin/pip install --require-hashes --no-deps -r req
 
 This repo holds itself to the same 100% gate.
 
+The tests mirror the repository: `actions/<name>/<script>.py` is tested in
+`tests/<suite>/actions/<name>/test_<script>.py`, and `scripts/` likewise. A test that runs a program
+outside the process, `git` included, is in `tests/integration` and declares it with
+`pytest.mark.requires_binary`; the rest are in `tests/unit`. Scripts are loaded with
+`script_helpers.load_script`, and scratch repositories come from `git_helpers`.
+[pytest-testrex](https://github.com/NearlyTRex/TestRex)'s meta suite, `tests/unit/meta`, holds every
+test to that layout and to its quality rules, and the code to the documentation and coding
+standards in `pyproject.toml`'s `[tool.testrex]`, whose baseline counts only ever go down.
+
 `self-ci.yml` and `self-security.yml` run this repo's checks through its own reusable workflows.
 The fixtures in `tests/fixtures` go through `python-ci`, `cpp-build`, `compose-test`,
 `inno-setup` and `container-scan`, and `release.yml` runs as a dry run over the C++ fixture's
@@ -609,13 +620,9 @@ Logic lives in scripts under `actions/`, called from the workflows, rather than 
 so it has tests: Python under the 100% gate, and `analyze.ps1` through pytest. The PowerShell
 tests are skipped on a machine without `pwsh`, but always run in CI.
 
-The shell coverage plugin's statement finder is checked against a corpus of real-world idioms in
-`tests/shell_corpus`, and cross-checked against shfmt, an independent bash parser, which
-`requirements-dev.txt` installs. A statement it invents or misses is a bug in how it reads a
-construct: add the construct to the corpus. Check a script of your own with
-`python tests/shfmt_oracle.py path/to/*.sh`. The sandbox tests skip where user namespaces are
-unavailable, but always run in CI. A script is Python unless it
-must run where Python may not be, such as inside a tool's container.
+A script is Python unless it must run where Python may not be, such as inside a tool's container.
+The shell coverage and sandbox plugins, and their corpus and shfmt cross-check, live in
+[TestRex](https://github.com/NearlyTRex/TestRex).
 
 Dependabot has no Chocolatey ecosystem, so `self-tool-versions.yml` checks the Inno Setup version
 `inno-setup.yml` installs every week, and fails with the version to move to when a newer one is
