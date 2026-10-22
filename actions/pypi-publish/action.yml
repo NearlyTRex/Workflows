@@ -1,11 +1,12 @@
 name: PyPI publish
 description: >-
   Publishes the sdist and wheel that python-build.yml uploaded, earlier in the
-  same run, to PyPI through trusted publishing. Use it as a step of a job in
-  the repo's own release workflow, never from a reusable workflow: PyPI checks
-  the workflow file that runs the job against the project's trusted publisher,
-  and does not accept one called from another repository. The job needs
-  id-token: write and the environment the trusted publisher names.
+  same run, to PyPI through trusted publishing: the job's OIDC token is
+  exchanged at PyPI for a short-lived upload token, and hash-locked twine
+  uploads with it. See publish.py. Use it as a step of a job in the repo's own
+  release workflow, never from a reusable workflow: PyPI checks the workflow
+  file that runs the job against the project's trusted publisher. The job
+  needs id-token: write and the environment the trusted publisher names.
 
 inputs:
   artifact-name:
@@ -21,6 +22,20 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: ${{ runner.temp }}/pypi-dist
 
-    - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-      with:
-        packages-dir: ${{ runner.temp }}/pypi-dist
+    # A venv of its own: the runner's Python refuses pip installs into the system
+    - name: Install twine
+      shell: bash
+      env:
+        LOCK: ${{ github.action_path }}/requirements.txt
+        VENV: ${{ runner.temp }}/pypi-publish
+      run: |
+        python3 -m venv "$VENV"
+        "$VENV/bin/python" -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "$LOCK"
+
+    - name: Publish
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/publish.py
+        DIST: ${{ runner.temp }}/pypi-dist
+        VENV: ${{ runner.temp }}/pypi-publish
+      run: '"$VENV/bin/python" "$SCRIPT"'
