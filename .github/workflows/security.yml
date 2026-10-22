@@ -79,10 +79,19 @@ jobs:
       - name: pip-audit
         env:
           FILES: ${{ inputs.pip-audit-files }}
+        # One lock at a time: each is its own environment, and pip-audit given several
+        # refuses a package they pin at different versions
         run: |
-          args=()
-          for file in $FILES; do args+=(-r "$file"); done
-          "$RUNNER_TEMP/workflow-tools/bin/pip-audit" --require-hashes --disable-pip --strict --progress-spinner off "${args[@]}"
+          failed=()
+          for file in $FILES; do
+            echo "::group::$file"
+            "$RUNNER_TEMP/workflow-tools/bin/pip-audit" --require-hashes --disable-pip --strict --progress-spinner off -r "$file" || failed+=("$file")
+            echo "::endgroup::"
+          done
+          for file in "${failed[@]}"; do
+            echo "::error file=$file::pip-audit found a vulnerable or unauditable requirement in $file"
+          done
+          [ ${#failed[@]} -eq 0 ]
 
   tracked-files:
     name: Tracked Files
