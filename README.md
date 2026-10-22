@@ -477,6 +477,14 @@ PyPI's trusted publishing checks the workflow file that runs the job and does no
 reusable workflow from another repository, so a `python-publish.yml` here could never publish.
 Building has no such limit, so it is a reusable workflow like the rest.
 
+`pypi-publish` makes the trusted publishing exchange itself rather than wrapping
+`pypa/gh-action-pypi-publish`: that action picks its Docker image from the action that calls it,
+which inside another repository's composite action is the wrong one
+([actions/runner#2473](https://github.com/actions/runner/issues/2473)). It asks GitHub for the job's
+OIDC token, exchanges it at PyPI for an upload token that lasts minutes, and uploads with
+hash-locked `twine` after `twine check --strict`. It makes no PEP 740 attestations; the GitHub
+Release's `SHA256SUMS.txt` covers the same files.
+
 The repo needs:
 
 - **`requirements-build.txt`**, hash-locked, listing `build` and its build backend. The build runs
@@ -554,7 +562,7 @@ so one pin fixes the whole chain. The actions are:
 | `check-tracked-files` | Fails when a file that could hold a credential is tracked |
 | `check-markdown-fences` | Fails on Markdown code fences that don't close, which hide text from the lint rules |
 | `python-build` | Builds the sdist and wheel without isolation, from the repo's hash-locked build backend, for `python-build` |
-| `pypi-publish` | Publishes the `python-build` artifact to PyPI through trusted publishing; a step in the caller's own job, never a reusable workflow |
+| `pypi-publish` | Exchanges the job's OIDC token at PyPI and uploads the `python-build` artifact with hash-locked twine; a step in the caller's own job, never a reusable workflow |
 
 Every third-party action, tool and image is pinned by hash or digest. Dependabot updates all of
 them weekly, 7 days behind upstream.
