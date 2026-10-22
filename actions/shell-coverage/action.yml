@@ -1,11 +1,11 @@
 name: Shell coverage
 description: >-
-  Loads the shell coverage plugin into the pytest runs in the rest of the job,
-  so the bash scripts the tests run must reach a coverage threshold, and
-  optionally the shell sandbox plugin. Installs tree-sitter-bash, which the
-  plugin reads scripts with, into the project's Python from a hash-locked file,
-  and passes the plugins to pytest through PYTHONPATH and PYTEST_ADDOPTS. Needs
-  the project's Python already set up.
+  Turns on shell coverage for the pytest runs in the rest of the job, so the
+  bash scripts the tests run must reach a coverage threshold, and optionally
+  the shell sandbox. Both come from pytest-testrex, which the project installs
+  with its test requirements as pytest-testrex[shell]; this checks it is there
+  and passes the options through PYTEST_ADDOPTS. Needs the project's Python
+  already set up.
 
 inputs:
   source:
@@ -32,13 +32,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install the shell parser
-      if: inputs.source != ''
-      shell: bash
-      env:
-        LOCK: ${{ github.action_path }}/requirements.txt
-      run: python -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "$LOCK"
-
     # Ubuntu 24.04 runners restrict unprivileged user namespaces, which the
     # sandbox builds its disposable root from.
     - name: Allow user namespaces
@@ -49,7 +42,7 @@ runs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
         fi
 
-    - name: Load the plugins
+    - name: Turn the plugins on
       shell: bash
       env:
         SCRIPT: ${{ github.action_path }}/pytest_options.py
