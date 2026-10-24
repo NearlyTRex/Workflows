@@ -88,6 +88,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `attest.yml` | `artifacts` | `id-token: write`, `attestations: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
 | `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `windows-test.yml` | `artifact`, `runs-on` (windows-latest), `page-heap` (true), `timeout` (300), `timeout-minutes` (30) | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 | `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `pr-branch` (scheduled-update/BASE), `assignees`, `node-version`, `timeout-minutes` (60). Outputs `changed`, `pr-url` | `contents: write`, `pull-requests: write` |
 | `license-year.yml` | `path` (LICENSE), `assignees`. Outputs `pr-url` | `contents: write`, `pull-requests: write` |
@@ -320,6 +321,34 @@ All of them run with the least permission they need. The caller must grant at le
   `release-check`'s `tag` output. `release.yml` only tags the commit once the builds are done, so
   otherwise the binary names a bare commit instead of the release. The tag is created in the
   build's checkout only and never pushed.
+
+- **`windows-test`:** runs test programs built somewhere else on Windows itself. A mingw-w64
+  cross build otherwise only ever runs under wine, whose loader and heap are not Windows', so a
+  fault that crashes it for a player can pass there.
+  - **Input:** `artifact` names an uploaded folder of programs with the DLLs and data files they
+    need beside them, usually from a `cpp-build` job's `artifact` input. Every `.exe` in it runs
+    with the folder as its working directory, for `timeout` seconds at most.
+  - **Page heap:** with `page-heap`, gflags gives each program full page heap first: every
+    allocation ends against an inaccessible page, so an overrun or a use after free faults at the
+    instruction that did it rather than corrupting a neighbour.
+  - **Report:** a program that fails runs again under cdb, which prints the fault and the stack.
+    Each program is a log group and each failure an error annotation, and the run's summary gets a
+    row per program.
+
+  ```yaml
+  build-windows-tests:
+    uses: NearlyTRex/Workflows/.github/workflows/cpp-build.yml@<commit sha> # vX.Y.Z
+    with:
+      apt-packages: cmake clang ninja-build g++-mingw-w64-x86-64
+      build-command: cmake --preset windows-cross && cmake --build --preset windows-cross --target test-bundle
+      artifact: windows-tests
+      artifact-path: build/windows-cross/test-bundle
+  windows-test:
+    needs: build-windows-tests
+    uses: NearlyTRex/Workflows/.github/workflows/windows-test.yml@<commit sha> # vX.Y.Z
+    with:
+      artifact: windows-tests
+  ```
 
 - **`inno-setup`:** compiles a Windows installer on `windows-latest`, passing `version` as
   `/DAppVersion=...`, then runs the repo's `smoke-test` PowerShell and, with `artifact`, uploads the
@@ -582,6 +611,7 @@ so one pin fixes the whole chain. The actions are:
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
 | `build-env` | Parallel jobs, ccache, and `ci-phase`, `ci-clang-tidy` and `ci-cpp-coverage` on `PATH` for `cpp-build` |
 | `ccache-stats` | Prints ccache's statistics and warns when `ccache-max-size` was too small |
+| `windows-test` | Runs a folder of test programs on Windows under full page heap, and a failing one again under cdb, for `windows-test` |
 | `check-json`, `check-toml` | Parse every tracked JSON or TOML file |
 | `psscriptanalyzer` | PSScriptAnalyzer over tracked PowerShell, errors only unless the repo has settings |
 | `clang-format` | Checks C and C++ formatting when the repo has a `.clang-format`, with its own hash-locked clang-format |

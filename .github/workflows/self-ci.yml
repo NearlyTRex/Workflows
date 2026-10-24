@@ -143,6 +143,17 @@ jobs:
       artifact: fixture-cpp-${{ matrix.os }}
       artifact-path: build/fixture_test*
 
+  # The C++ fixture's MSVC build, run on Windows by windows-test under full
+  # page heap.
+  windows-test:
+    name: Windows test
+    needs: cpp
+    uses: $/.github/workflows/windows-test.yml
+    permissions:
+      contents: read
+    with:
+      artifact: fixture-cpp-windows-latest
+
   # Real attestations of the C++ fixture builds, since attesting has no dry run.
   # A pull request from a fork can't mint the signing token, so it skips this.
   attest:
