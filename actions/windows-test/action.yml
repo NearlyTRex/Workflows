@@ -1,0 +1,32 @@
+name: Windows tests
+description: >-
+  Runs every .exe in a folder on a Windows runner, optionally under full page heap, and runs a
+  failing one again under cdb for its stack. See run_windows_tests.py.
+
+inputs:
+  bundle:
+    description: Folder of test programs, with the DLLs and data files they need beside them
+    required: true
+  page-heap:
+    required: false
+    default: "true"
+  timeout:
+    description: Seconds each program may run
+    required: false
+    default: "300"
+
+runs:
+  using: composite
+  steps:
+    - name: Run the tests
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/run_windows_tests.py
+        BUNDLE: ${{ inputs.bundle }}
+        PAGE_HEAP: ${{ inputs.page-heap }}
+        TIMEOUT: ${{ inputs.timeout }}
+      # The runner's own Python; the script needs nothing beyond the standard library.
+      run: |
+        options=(--timeout "$TIMEOUT")
+        if [ "$PAGE_HEAP" = true ]; then options+=(--page-heap); fi
+        python "$SCRIPT" "$BUNDLE" "${options[@]}"
