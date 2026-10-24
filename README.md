@@ -267,7 +267,7 @@ All of them run with the least permission they need. The caller must grant at le
   `cache-key-files` are unchanged and saved only by a passing run, so it suits fetched
   dependencies; `rolling-cache-paths` suits caches that follow the code.
 
-  The build and test commands also have two commands on `PATH` (Linux and macOS; `ci-phase` on
+  The build and test commands also have three commands on `PATH` (Linux and macOS; `ci-phase` on
   Windows too):
 
   - **`ci-phase NAME COMMAND...`** runs one phase of the step as a collapsible log group, and adds
@@ -281,15 +281,39 @@ All of them run with the least permission they need. The caller must grant at le
     source (comments kept, so a `NOLINT` edit counts), command line, config and the clang-tidy
     version are what an earlier clean run saw, so only what a change touches is checked again.
     Failures are never cached.
+  - **`ci-cpp-coverage --object BINARY... -- COMMAND...`** is the C and C++ counterpart of
+    `python-ci`'s coverage gate, for a build made with clang's
+    `-fprofile-instr-generate -fcoverage-mapping`. It runs COMMAND, usually `ctest`, with every
+    process writing a profile, merges them, and counts lines, functions, branches and regions over
+    the code in each `--object`.
+    - **Objects:** name the test binaries. An instrumented binary no test runs, such as the
+      application itself, can be named too: its code then counts as not run, so the total covers
+      the whole program rather than only what the tests link.
+    - **Files:** only files under the checkout count, less those an `--exclude` regex matches in
+      the absolute path, such as `/tests/` or `/_deps/`.
+    - **Gate:** `--fail-under PERCENT` sets lines, functions and branches, which default to 100;
+      `--fail-under METRIC=PERCENT` sets one, regions included. `0` only reports, which suits
+      recording a baseline to raise from. A metric below its threshold is an error annotation and
+      fails the step, and failing tests keep their own exit status.
+    - **Report:** the log lists every file short of 100% in a gated metric, most missed lines
+      first, and the run's summary gets the totals and the first 50 of those files.
+    - **Tools:** `llvm-cov` and `llvm-profdata` from `PATH` (Ubuntu's `llvm` package), or
+      `--llvm-cov` and `--llvm-profdata`, or `LLVM_COV` and `LLVM_PROFDATA`. They must match the
+      clang that built the binaries.
 
   ```yaml
   with:
-    apt-packages: cmake clang clang-tidy ninja-build
+    apt-packages: cmake clang clang-tidy llvm ninja-build
     rolling-cache-paths: .tidy-cache
     build-command: |
-      ci-phase Configure cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      ci-phase Configure cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -DCMAKE_CXX_COMPILER=clang++ "-DCMAKE_CXX_FLAGS=-fprofile-instr-generate -fcoverage-mapping" \
+        -DCMAKE_EXE_LINKER_FLAGS=-fprofile-instr-generate
       ci-phase Build cmake --build build
       ci-phase Tidy ci-clang-tidy -p build --cache-dir .tidy-cache
+    test-command: |
+      ci-phase Coverage ci-cpp-coverage --object build/app_tests --exclude /tests/ \
+        -- ctest --test-dir build --output-on-failure
   ```
 
   A release build that stamps `git describe` into the binary should pass `local-tag:` with
@@ -556,7 +580,7 @@ so one pin fixes the whole chain. The actions are:
 | `open-pr` | Opens a pull request, or updates the one already open from the branch, for `release-pr` and `scheduled-update` |
 | `wait-for-url` | Waits for a URL to answer below 400, by the clock, for `compose-test` |
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
-| `build-env` | Parallel jobs, ccache, and `ci-phase` and `ci-clang-tidy` on `PATH` for `cpp-build` |
+| `build-env` | Parallel jobs, ccache, and `ci-phase`, `ci-clang-tidy` and `ci-cpp-coverage` on `PATH` for `cpp-build` |
 | `ccache-stats` | Prints ccache's statistics and warns when `ccache-max-size` was too small |
 | `check-json`, `check-toml` | Parse every tracked JSON or TOML file |
 | `psscriptanalyzer` | PSScriptAnalyzer over tracked PowerShell, errors only unless the repo has settings |

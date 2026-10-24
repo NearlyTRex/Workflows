@@ -1,8 +1,8 @@
 name: Build environment
 description: >-
   Sets up the environment for a C/C++ build: parallel jobs on every core,
-  optionally ccache (Linux and macOS runners), and the ci-phase and ci-clang-tidy
-  commands on PATH. See build_env.py.
+  optionally ccache (Linux and macOS runners), and the ci-phase, ci-clang-tidy and
+  ci-cpp-coverage commands on PATH. See build_env.py.
 
 inputs:
   parallel:
