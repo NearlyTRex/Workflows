@@ -249,11 +249,12 @@ jobs:
         if: always() && steps.ccache.outcome == 'success'
         uses: $/actions/ccache-stats
 
-      # Also after a failed build: whatever did compile is still worth keeping.
-      # Not after a cancelled one, which usually stopped early: its small cache
-      # would be the newest, and the next run would restore it over a full one.
+      # After a failed or cancelled build too: whatever did compile is worth
+      # keeping. The run started from the newest cache and only added to it, so
+      # what it saves is never less than it restored; and a job whose cold build
+      # outlasts timeout-minutes would otherwise start cold every time.
       - name: Save ccache
-        if: '!cancelled() && steps.ccache.outcome == ''success'''
+        if: always() && steps.ccache.outcome == 'success'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
@@ -266,8 +267,10 @@ jobs:
           TEST_COMMAND: ${{ inputs.test-command }}
         run: bash -euo pipefail -c "$TEST_COMMAND"
 
+      # As the ccache: ci-clang-tidy prunes its --cache-dir only once every
+      # file has run, so a cancelled run's directory still holds all it restored.
       - name: Save rolling cache
-        if: '!cancelled() && steps.rolling.outcome == ''success'''
+        if: always() && steps.rolling.outcome == 'success'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.rolling-cache-paths }}
