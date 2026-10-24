@@ -23,6 +23,9 @@ def test_the_launchers_run_the_tools_with_this_python(tmp_path):
     phase = subprocess.run([str(bin_dir / "ci-phase"), "Check", sys.executable, "-c", "print('ran')"],
                            capture_output=True, text=True, check=False, env={"PATH": os.environ["PATH"]})
     tidy = subprocess.run([str(bin_dir / "ci-clang-tidy"), "--help"], capture_output=True, text=True, check=False)
+    coverage = subprocess.run([str(bin_dir / "ci-cpp-coverage"), "--help"], capture_output=True, text=True,
+                              check=False)
 
     assert phase.returncode == 0 and "::group::Check\nran\n::endgroup::" in phase.stdout
     assert tidy.returncode == 0 and "compile_commands.json" in tidy.stdout
+    assert coverage.returncode == 0 and "-fprofile-instr-generate" in coverage.stdout

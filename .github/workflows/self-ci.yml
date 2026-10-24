@@ -114,11 +114,12 @@ jobs:
       ccache: true
       cache-key: fixture-cpp
       # Skipped on Windows, like ccache.
-      apt-packages: clang-tidy
+      apt-packages: clang clang-tidy llvm
       rolling-cache-paths: .tidy-cache
       # ci-phase on both runners, so its launcher is tested on Windows too.
       # ci-clang-tidy runs twice on Linux: the second run must find every file
-      # in the cache it just filled.
+      # in the cache it just filled. Linux also builds the fixture with clang's
+      # coverage instrumentation for ci-cpp-coverage.
       build-command: |
         ci-phase Configure cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
         ci-phase Build cmake --build build --parallel
@@ -126,8 +127,19 @@ jobs:
           ci-phase Tidy ci-clang-tidy -p build --cache-dir .tidy-cache
           ci-clang-tidy -p build --cache-dir .tidy-cache | tee tidy.log
           grep -q ", 0 checked, 0 failed" tidy.log
+          ci-phase "Configure (coverage)" cmake -S tests/fixtures/cpp-app -B build-coverage -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            "-DCMAKE_CXX_FLAGS=-fprofile-instr-generate -fcoverage-mapping" \
+            -DCMAKE_EXE_LINKER_FLAGS=-fprofile-instr-generate
+          ci-phase "Build (coverage)" cmake --build build-coverage --parallel
         fi
-      test-command: ci-phase Test ctest --test-dir build --output-on-failure
+      # The test's own failure branches never run, so it is left out of the gate.
+      test-command: |
+        ci-phase Test ctest --test-dir build --output-on-failure
+        if [ "$RUNNER_OS" = Linux ]; then
+          ci-phase Coverage ci-cpp-coverage --object build-coverage/fixture_test --exclude '_test\.cpp$' \
+            --fail-under regions=100 -- ctest --test-dir build-coverage --output-on-failure
+        fi
       artifact: fixture-cpp-${{ matrix.os }}
       artifact-path: build/fixture_test*
 

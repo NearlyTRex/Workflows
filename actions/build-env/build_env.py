@@ -12,15 +12,16 @@ CCACHE=true     route compilers through ccache (Linux and macOS): CMake reads th
                 caches each compile once. CCACHE_BASEDIR makes paths relative, so a hit doesn't
                 depend on where the runner checked out. Uses CCACHE_DIR, MAX_SIZE, SLOPPINESS and
                 CCACHE_WRAPPERS (default /usr/lib/ccache on Linux, Homebrew's libexec on macOS).
-TOOLS=DIR       put ci-phase and ci-clang-tidy on PATH: bash launchers in $RUNNER_TEMP/ci-tools
-                that run DIR/ci_phase.py and DIR/ci_clang_tidy.py with this Python.
+TOOLS=DIR       put ci-phase, ci-clang-tidy and ci-cpp-coverage on PATH: bash launchers in
+                $RUNNER_TEMP/ci-tools that run DIR/ci_phase.py, DIR/ci_clang_tidy.py and
+                DIR/ci_cpp_coverage.py with this Python.
 """
 
 import os
 import sys
 from pathlib import Path
 
-TOOLS = ("ci_phase", "ci_clang_tidy")
+TOOLS = ("ci_phase", "ci_clang_tidy", "ci_cpp_coverage")
 
 # Where each runner's ccache keeps its compiler-named wrappers. On macOS the
 # action passes CCACHE_WRAPPERS from `brew --prefix`; this is Apple silicon's.
@@ -42,7 +43,7 @@ def install_tools(env):
                             encoding="utf-8")
         launcher.chmod(0o755)
     append(env, "GITHUB_PATH", [str(bin_dir)])
-    print(f"ci-phase and ci-clang-tidy in {bin_dir}")
+    print(f"ci-phase, ci-clang-tidy and ci-cpp-coverage in {bin_dir}")
 
 
 def set_parallel(env):

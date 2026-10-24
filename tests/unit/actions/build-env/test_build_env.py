@@ -91,8 +91,8 @@ def test_tools_are_put_on_path(tmp_path, capsys):
     env, path, out = run(tmp_path, capsys, TOOLS=str(ACTION), RUNNER_OS="Linux")
     bin_dir = tmp_path / "temp" / "ci-tools"
     assert env == {} and path == [str(bin_dir)]
-    assert f"ci-phase and ci-clang-tidy in {bin_dir}" in out
-    assert sorted(launcher.name for launcher in bin_dir.iterdir()) == ["ci-clang-tidy", "ci-phase"]
+    assert f"ci-phase, ci-clang-tidy and ci-cpp-coverage in {bin_dir}" in out
+    assert sorted(launcher.name for launcher in bin_dir.iterdir()) == ["ci-clang-tidy", "ci-cpp-coverage", "ci-phase"]
 
 
 def test_reads_the_process_environment(tmp_path, monkeypatch):
