@@ -249,9 +249,9 @@ All of them run with the least permission they need. The caller must grant at le
   compilers through it, CMake's through its launcher setting and any other build system's through
   ccache's wrappers first on `PATH`, so a build only recompiles what changed since the last run.
   Each run saves its ccache under a new key and the next restores the newest one, so the cache
-  follows the code, and the hit rate is printed after the build. A cancelled run saves nothing,
-  since it usually stopped early and its small cache would otherwise be the one the next run
-  restores.
+  follows the code, and the hit rate is printed after the build. A failed or cancelled run saves
+  too: it started from the newest cache and only added to it, and a job whose cold build outlasts
+  `timeout-minutes` gets further each run instead of starting cold every time.
 
   When a build fills `ccache-max-size`, ccache evicts entries as it goes and the saved cache
   holds only the end of the build, so the next run misses on the rest. The stats step then
@@ -264,7 +264,7 @@ All of them run with the least permission they need. The caller must grant at le
   every file that includes it misses. The stats list any calls still uncacheable, and why.
 
   `rolling-cache-paths` gives other directories the same treatment as the ccache: saved after
-  every run that isn't cancelled, and the newest restored. `cache-paths` is restored only while
+  every run, and the newest restored. `cache-paths` is restored only while
   `cache-key-files` are unchanged and saved only by a passing run, so it suits fetched
   dependencies; `rolling-cache-paths` suits caches that follow the code.
 
