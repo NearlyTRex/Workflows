@@ -87,7 +87,7 @@ All of them run with the least permission they need. The caller must grant at le
 | `python-build.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-build.txt), `artifact-name` (dist) | `contents: read` |
 | `attest.yml` | `artifacts` | `id-token: write`, `attestations: write` |
 | `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `llvm-version`, `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `windows-test.yml` | `artifact`, `runs-on` (windows-latest), `page-heap` (true), `timeout` (300), `timeout-minutes` (30) | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 | `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `pr-branch` (scheduled-update/BASE), `assignees`, `node-version`, `timeout-minutes` (60). Outputs `changed`, `pr-url` | `contents: write`, `pull-requests: write` |
@@ -220,7 +220,9 @@ All of them run with the least permission they need. The caller must grant at le
 - **`cpp-build`:** runs the repo's own build and test commands in bash on any runner (Git Bash on
   Windows), so it fits CMake, a `Setup.py` or a packaging script alike. Around them it installs
   `apt-packages` on Linux and `brew-packages` on macOS, puts MSVC on `PATH` with `msvc` (found
-  with vswhere, so no edition path is hard-coded), restores `cache-paths` keyed on
+  with vswhere, so no edition path is hard-coded), installs an LLVM release from apt.llvm.org
+  with `llvm-version` (versioned packages beside the runner's clang, libc++ included, so the
+  build names `clang++-23` and the like), restores `cache-paths` keyed on
   `cache-key-files`, and uploads `artifact-path` as `artifact`. The cache is named by
   `cache-key`, or else the artifact name, so a CI build and a release build of the same thing can
   share one. `container` runs the whole job inside an image on a Linux runner, which is how a

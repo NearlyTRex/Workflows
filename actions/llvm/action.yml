@@ -1,0 +1,19 @@
+name: LLVM
+description: >-
+  Installs an LLVM release from apt.llvm.org beside the runner's own clang: clang-N with
+  clang-format, clang-tidy, lld, llvm-cov and libc++, all named with the version. See
+  install_llvm.py.
+
+inputs:
+  version:
+    description: The LLVM release, e.g. 23
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/install_llvm.py
+        LLVM_VERSION: ${{ inputs.version }}
+      run: python3 "$SCRIPT"

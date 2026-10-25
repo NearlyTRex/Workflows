@@ -55,6 +55,12 @@ on:
         description: vcvarsall architecture, e.g. x64, x86, x64_arm64
         type: string
         default: x64
+      llvm-version:
+        description: >-
+          An LLVM release to install from apt.llvm.org beside the runner's clang, e.g. 23:
+          clang-N, clang-tidy-N, clang-format-N, lld-N, llvm-N and libc++; Linux runners only
+        type: string
+        default: ""
       cache-paths:
         description: Newline-separated paths to cache between runs, such as fetched dependencies
         type: string
@@ -189,6 +195,13 @@ jobs:
             if ($_ -match '^([^=]+)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
           }
           Write-Host "MSVC environment from $vs ($env:ARCH)"
+
+      # LLVM's own repository, for a newer clang and libc++ than the distribution ships.
+      - name: Install LLVM
+        if: inputs.llvm-version != '' && runner.os == 'Linux'
+        uses: $/actions/llvm
+        with:
+          version: ${{ inputs.llvm-version }}
 
       - name: Cache
         if: inputs.cache-paths != ''
