@@ -24,6 +24,7 @@ LIBRARIES = ("libclang-rt-{}-dev", "libc++-{}-dev", "libc++abi-{}-dev")
 
 
 def packages(version):
+    """Release version's compiler, tools, profiling runtime and libc++, as apt names them."""
     return [f"{tool}-{version}" for tool in TOOLS] + [library.format(version) for library in LIBRARIES]
 
 
@@ -37,15 +38,18 @@ def codename(os_release):
 
 
 def sources_line(release, version):
+    """The apt source for one LLVM release on one distribution release, signed by LLVM's key."""
     return f"deb [signed-by={KEYRING}] {REPOSITORY}/{release}/ llvm-toolchain-{release}-{version} main\n"
 
 
 def fetch(url):
+    """The body at url, waiting up to a minute for it."""
     with urllib.request.urlopen(url, timeout=60) as response:
         return response.read()
 
 
 def main(env=None, run=subprocess.run, download=fetch, os_release=Path("/etc/os-release")):
+    """Add the repository and install the toolchain; 1 when the version or release won't do."""
     env = os.environ if env is None else env
     version = env.get("LLVM_VERSION", "").strip()
     if not version.isdigit():
