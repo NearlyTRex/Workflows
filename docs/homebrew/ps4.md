@@ -1,13 +1,16 @@
 # PS4 homebrew
 
-[`cpp-build`](../cpp.md#cpp-build)'s `openorbis-version` installs that
-[OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) release on a
-Linux runner, checked against the sha256 [`actions/openorbis`](../../actions/openorbis) pins for it,
-with the LLVM release it was built with (18 for 0.5.4). The build gets `OO_PS4_TOOLCHAIN`, the
-SDK's `create-fself`, `create-gp4`, `PkgTool.Core` and `readoelf` on `PATH`, and a CMake
-toolchain file as `OPENORBIS_TOOLCHAIN_FILE`. The SDK's 0.5.4 header declaring a 32-bit
-`mode_t` is fixed in the installed copy, so `struct stat` matches libkernel's. A Makefile build
-can use the variables and tools directly; a CMake build gets the toolchain and helpers:
+[`cpp-build`](../cpp.md#cpp-build)'s `openorbis-version` installs that [OpenOrbis PS4
+Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) release on a Linux runner, checked
+against the sha256 [`actions/openorbis`](../../actions/openorbis) pins for it, with the LLVM release
+it was built with (18 for 0.5.4). The build gets `OO_PS4_TOOLCHAIN`, the SDK's `create-fself`,
+`create-gp4`, `PkgTool.Core` and `readoelf` on `PATH`, and a CMake toolchain file as
+`OPENORBIS_TOOLCHAIN_FILE`. `PkgTool.Core` is a .NET Core 3.0 program, which needs OpenSSL 1.1, and
+current runners only have OpenSSL 3, so on `PATH` it runs with a private copy of Ubuntu 20.04's last
+`libssl1.1`, also pinned by sha256, that nothing else in the job sees. The SDK's 0.5.4 header
+declaring a 32-bit `mode_t` is fixed in the installed copy, so `struct stat` matches libkernel's. A
+Makefile build can use the variables and tools directly; a CMake build gets the toolchain and
+helpers:
 
 ```cmake
 include(OpenOrbis)

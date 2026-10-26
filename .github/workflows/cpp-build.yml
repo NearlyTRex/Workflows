@@ -65,8 +65,8 @@ on:
       msvc-uwp:
         description: >-
           Set MSVC up for UWP apps, such as Xbox Dev Mode homebrew: vcvarsall's uwp mode, which
-          links the store CRT and WindowsApp.lib, with makeappx and signtool on PATH for ci-msix.
-          Implies msvc; Windows runners only
+          links the store CRT, with WindowsApp.lib added to every link through LINK, and makeappx
+          and signtool on PATH for ci-msix. Implies msvc; Windows runners only
         type: boolean
         default: false
       llvm-version:
@@ -222,7 +222,10 @@ jobs:
       # The same environment a Developer Command Prompt gets, exported to every
       # later step, found with vswhere rather than a hard-coded edition path. In
       # uwp mode, the store libraries must be there for this toolset, or every
-      # link would quietly pick the desktop CRT.
+      # link would quietly pick the desktop CRT; and the store CRT's startup
+      # calls RoInitialize, so LINK, which link.exe reads before its command
+      # line, adds WindowsApp.lib to every link, a build system's compiler
+      # checks included, ahead of the desktop libraries they name.
       - name: Set up MSVC
         if: inputs.msvc || inputs.msvc-uwp
         shell: pwsh
@@ -242,6 +245,7 @@ jobs:
           if ($mode) {
             $store = $vars['LIB'] -split ';' | Where-Object { $_ -match '\\store(\\|$)' }
             if (-not $store) { throw "vcvarsall's uwp mode found no store libraries for $env:ARCH in $vs" }
+            $vars['LINK'] = "WindowsApp.lib $($vars['LINK'])".Trim()
           }
           $vars.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
           Write-Host "MSVC environment from $vs ($env:ARCH $mode)"

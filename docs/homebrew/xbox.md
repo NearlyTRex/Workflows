@@ -2,10 +2,12 @@
 
 Xbox homebrew runs in Dev Mode as a UWP app, installed from the console's Device Portal as a signed
 MSIX. [`cpp-build`](../cpp.md#cpp-build)'s `msvc-uwp: true` sets MSVC up for that on a Windows
-runner: vcvarsall's `uwp` mode, so builds link the store CRT (`vcruntime140_app.dll` and the rest)
-and `WindowsApp.lib`, with the Windows SDK's C++/WinRT headers, `makeappx`, `signtool`, `makepri`,
-`dumpbin` and `lib` on `PATH`. It implies `msvc`, and fails when the runner's Visual Studio has no
-store libraries for `msvc-arch`, rather than linking the desktop CRT.
+runner: vcvarsall's `uwp` mode, so builds link the store CRT (`vcruntime140_app.dll` and the rest),
+and `LINK` adds `WindowsApp.lib` to every link, a build system's compiler checks included, since the
+store CRT starts with `RoInitialize`. It also puts the Windows SDK's C++/WinRT headers on `INCLUDE`,
+and `makeappx`, `signtool`, `makepri`, `dumpbin` and `lib` on `PATH`. It implies `msvc`, and fails
+when the runner's Visual Studio has no store libraries for `msvc-arch`, rather than linking the
+desktop CRT.
 
 A UWP executable is an ordinary MSVC build with `WINAPI_FAMILY=WINAPI_FAMILY_APP`, linked with
 `/APPCONTAINER` against `WindowsApp.lib`:

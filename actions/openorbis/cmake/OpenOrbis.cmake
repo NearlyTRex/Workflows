@@ -1,5 +1,5 @@
 # What a PS4 runs, from targets built with OpenOrbisToolchain.cmake, made by the
-# SDK's own tools (create-fself, create-gp4 and PkgTool.Core):
+# SDK's own tools (create-fself and PkgTool.Core):
 #
 #   openorbis_add_fself(<target> [PAID <id>])
 #     eboot.bin from an executable, or <name>.prx from a SHARED library, in
@@ -34,8 +34,9 @@ else()
   set(_openorbis_fself create-fself)
 endif()
 find_program(OPENORBIS_CREATE_FSELF ${_openorbis_fself} PATHS "${_openorbis_bin}" NO_DEFAULT_PATH REQUIRED)
-find_program(OPENORBIS_CREATE_GP4 create-gp4 PATHS "${_openorbis_bin}" NO_DEFAULT_PATH REQUIRED)
-find_program(OPENORBIS_PKGTOOL PkgTool.Core PATHS "${_openorbis_bin}" NO_DEFAULT_PATH REQUIRED)
+# actions/openorbis's PkgTool.Core, OPENORBIS_BIN's, runs the SDK's with the
+# OpenSSL 1.1 it needs.
+find_program(OPENORBIS_PKGTOOL PkgTool.Core PATHS "$ENV{OPENORBIS_BIN}" "${_openorbis_bin}" NO_DEFAULT_PATH REQUIRED)
 set(_openorbis_package_script "${CMAKE_CURRENT_LIST_DIR}/OpenOrbisPackage.cmake")
 
 # Where a target's PS4 files go: per configuration under a multi-config generator.
@@ -99,8 +100,8 @@ function(_openorbis_pairs name field pairs out)
   set(result ${${out}})
   while(pairs)
     list(POP_FRONT pairs source path)
-    _openorbis_check(${name} "${field} path" "${path}" "^[^ \t/][^ \t]*$"
-                     "relative and without spaces, which create-gp4 can't take")
+    _openorbis_check(${name} "${field} path" "${path}" "^[^ \t/&<\"][^ \t&<\"]*$"
+                     "relative, without spaces, &, < or \", as the gp4 project holds it")
     cmake_path(ABSOLUTE_PATH source)
     list(APPEND result "${source}" "${path}")
   endwhile()
@@ -182,7 +183,6 @@ function(openorbis_add_pkg name)
   # The script runs at build time, when the configuration in these paths is known.
   string(CONCAT script
     "set(PKGTOOL [==[${OPENORBIS_PKGTOOL}]==])\n"
-    "set(CREATE_GP4 [==[${OPENORBIS_CREATE_GP4}]==])\n"
     "set(STAGE [==[${work}/stage]==])\n"
     "set(OUTPUT_DIRECTORY [==[${arg_OUTPUT_DIRECTORY}]==])\n"
     "set(PKG [==[${pkg}]==])\n"
