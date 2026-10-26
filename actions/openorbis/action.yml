@@ -1,0 +1,28 @@
+name: OpenOrbis
+description: >-
+  Installs a pinned OpenOrbis PS4 Toolchain release for PS4 homebrew, with the LLVM release it was
+  built with: the SDK as OO_PS4_TOOLCHAIN, its tools on PATH, and a CMake toolchain file as
+  OPENORBIS_TOOLCHAIN_FILE. Linux runners. See install_openorbis.py.
+
+inputs:
+  version:
+    description: The OpenOrbis release, e.g. 0.5.4
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: sdk
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/install_openorbis.py
+        CMAKE_FILES: ${{ github.action_path }}/cmake
+        OPENORBIS_VERSION: ${{ inputs.version }}
+        OPENORBIS_DIR: ${{ runner.temp }}/openorbis
+      run: python3 "$SCRIPT"
+
+    # The SDK's libc++ is built with one LLVM release, so the toolchain file
+    # names its versioned clang and lld.
+    - uses: $/actions/llvm
+      with:
+        version: ${{ steps.sdk.outputs.llvm-version }}
