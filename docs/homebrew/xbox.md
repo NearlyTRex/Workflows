@@ -51,7 +51,8 @@ build has staged, laid out as the package holds it, with the repo's `Package.app
   dependency on that framework package installed beside the app, the app dies at launch with no
   message.
 - **`--check-imports`:** fails, listing them, when an `.exe` or `.dll` in the stage imports a DLL
-  that is neither packaged nor one `WindowsApp.lib` links to, which is that same silent death,
+  that is neither packaged nor the system's (one `WindowsApp.lib` or `ucrt.lib` links to, the
+  latter being the Universal CRT's `api-ms-win-crt-*` sets), which is that same silent death,
   usually a desktop CRT or a library built for desktop. `--allow-import DLL` passes one the
   device provides anyway.
 - **Signing:** `--certificate PFX` signs with the caller's certificate, whose subject must be the

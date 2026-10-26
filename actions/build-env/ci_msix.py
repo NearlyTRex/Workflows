@@ -13,7 +13,8 @@ is, or as a scale- or targetsize-qualified variant), must be in STAGE. --vclibs 
 runtime DLLs a UWP app needs (vcruntime140_app.dll and the rest) into STAGE from the Windows SDK's
 Microsoft.VCLibs framework package, for a device that doesn't have that package installed.
 --check-imports fails when an .exe or .dll in STAGE imports a DLL that is neither in STAGE nor
-one WindowsApp.lib links to, which a UWP app otherwise only shows by dying at launch.
+one WindowsApp.lib or ucrt.lib links to, the system's, which a UWP app otherwise only shows by
+dying at launch.
 
 The package is packed with makeappx and signed with signtool: by --certificate, a PFX whose
 password is MSIX_CERTIFICATE_PASSWORD and whose subject is the manifest's Publisher, or else by a
@@ -74,7 +75,7 @@ def parse_args(argv):
     parser.add_argument("--vclibs", action="store_true", help="copy the UWP C++ runtime DLLs into the package")
     parser.add_argument("--check-imports", action="store_true", help="fail on DLL imports nothing provides")
     parser.add_argument("--allow-import", action="append", default=[], metavar="DLL",
-                        help="a DLL the device provides that WindowsApp.lib doesn't link to")
+                        help="a DLL the device provides that neither WindowsApp.lib nor ucrt.lib links to")
     parser.add_argument("--certificate", type=Path, help="a PFX to sign with; otherwise a self-signed one")
     return parser.parse_args(argv)
 
@@ -164,13 +165,21 @@ def dll_names(output):
     return {line.rpartition("\\")[2] for line in lines if line.endswith(".dll") and " " not in line}
 
 
+# What every UWP device provides: the Windows API, and the Universal CRT's API
+# sets (api-ms-win-crt-*), which the store CRT links through ucrt.lib.
+SYSTEM_LIBRARIES = ("WindowsApp.lib", "ucrt.lib")
+
+
 def system_dlls(run, env):
-    """The DLLs WindowsApp.lib links to: those every UWP device provides."""
-    for directory in env.get("LIB", "").split(";"):
-        library = Path(directory, "WindowsApp.lib")
-        if directory and library.is_file():
-            return dll_names(tool(run, "lib", "/nologo", "/list", str(library)))
-    raise ToolError("no WindowsApp.lib in LIB; cpp-build's msvc-uwp sets LIB")
+    """The DLLs SYSTEM_LIBRARIES link to, found in LIB."""
+    directories = [directory for directory in env.get("LIB", "").split(";") if directory]
+    names = set()
+    for name in SYSTEM_LIBRARIES:
+        library = next((Path(d, name) for d in directories if Path(d, name).is_file()), None)
+        if library is None:
+            raise ToolError(f"no {name} in LIB; cpp-build's msvc-uwp sets LIB")
+        names |= dll_names(tool(run, "lib", "/nologo", "/list", str(library)))
+    return names
 
 
 def unprovided_imports(stage, run, env, allowed):
@@ -217,7 +226,7 @@ def package(args, run, env, work):
     if args.check_imports:
         problems = unprovided_imports(args.dir, run, env, args.allow_import)
         if problems:
-            raise ToolError("imports neither packaged nor in WindowsApp.lib:\n" + "\n".join(
+            raise ToolError("imports neither packaged nor the system's:\n" + "\n".join(
                 f"  {binary}: {', '.join(names)}" for binary, names in problems.items()))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     tool(run, "makeappx", "pack", "/o", "/d", str(args.dir), "/p", str(args.out))

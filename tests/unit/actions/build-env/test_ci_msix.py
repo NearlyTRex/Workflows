@@ -27,7 +27,8 @@ MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
 </Package>
 """
 IMAGES = ["StoreLogo.png", "Square150x150Logo.png", "Square44x44Logo.scale-200.png", "SplashScreen.png"]
-WINDOWS_APP = "Microsoft (R) Library Manager\napi-ms-win-core-synch-l1-1-0.dll\nd:\\os\\obj\\d3d11.dll\nkernel32.dll\n"
+LISTINGS = {"WindowsApp.lib": "Microsoft (R) Library Manager\napi-ms-win-core-synch-l1-1-0.dll\nd:\\os\\obj\\d3d11.dll\nkernel32.dll\n",
+            "ucrt.lib": "api-ms-win-crt-heap-l1-1-0.dll\napi-ms-win-crt-runtime-l1-1-0.dll\n"}
 
 
 class Tools:
@@ -47,7 +48,7 @@ class Tools:
             return subprocess.CompletedProcess(command, 1, self.fail[name], "")
         stdout = ""
         if name == "lib":
-            stdout = WINDOWS_APP
+            stdout = LISTINGS[Path(command[-1]).name]
         elif name == "dumpbin":
             binary = Path(command[-1])
             stdout = f"Dump of file C:\\stage\\{binary.name}\n\n  Image has the following dependencies:\n\n" + \
@@ -82,7 +83,8 @@ def run(stage, *extra, tools=None, env=None):
     argv = ["--dir", str(stage), "--manifest", str(stage.parent / "Package.appxmanifest"), "--out", str(out), *extra]
     lib = stage.parent / "lib"
     lib.mkdir(exist_ok=True)
-    (lib / "WindowsApp.lib").write_bytes(b"!<arch>")
+    for library in LISTINGS:
+        (lib / library).write_bytes(b"!<arch>")
     status = ci_msix.main(argv, run=tools, env={"LIB": f";{lib}", **(env or {})})
     return status, tools, out
 
@@ -185,22 +187,32 @@ def test_check_imports_fails_on_what_nothing_provides(stage, capsys):
     status, tools, _ = run(stage, "--check-imports", tools=tools)
     assert status == 1 and tools.named("makeappx") == []
     printed = capsys.readouterr().out
-    assert "imports neither packaged nor in WindowsApp.lib:" in printed
+    assert "imports neither packaged nor the system's:" in printed
     assert "  app.exe: msvcp140.dll\n  helper.dll: vcruntime140.dll" in printed
 
 
 def test_check_imports_passes_what_the_package_device_or_caller_provides(stage):
     (stage / "helper.dll").write_bytes(b"MZ")
-    tools = Tools(imports={"app.exe": ["helper.dll", "kernel32.dll", "Custom.dll"]})
+    tools = Tools(imports={"app.exe": ["helper.dll", "kernel32.dll", "Custom.dll"],
+                           "helper.dll": ["api-ms-win-crt-runtime-l1-1-0.dll"]})
     status, tools, _ = run(stage, "--check-imports", "--allow-import", "custom.DLL", tools=tools)
     assert status == 0 and len(tools.named("dumpbin")) == 2
-    assert tools.named("lib")[0][:3] == ["lib", "/nologo", "/list"]
+    assert [Path(command[-1]).name for command in tools.named("lib")] == ["WindowsApp.lib", "ucrt.lib"]
 
 
 def test_check_imports_needs_windows_app_lib(stage, capsys):
     status = ci_msix.main(["--dir", str(stage), "--manifest", str(stage.parent / "Package.appxmanifest"),
                            "--out", str(stage.parent / "app.msix"), "--check-imports"], run=Tools(), env={})
     assert status == 1 and "no WindowsApp.lib in LIB" in capsys.readouterr().out
+
+
+def test_check_imports_needs_ucrt_lib(stage, capsys):
+    (stage.parent / "lib").mkdir()
+    (stage.parent / "lib" / "WindowsApp.lib").write_bytes(b"!<arch>")
+    status = ci_msix.main(["--dir", str(stage), "--manifest", str(stage.parent / "Package.appxmanifest"),
+                           "--out", str(stage.parent / "app.msix"), "--check-imports"], run=Tools(),
+                          env={"LIB": str(stage.parent / "lib")})
+    assert status == 1 and "no ucrt.lib in LIB" in capsys.readouterr().out
 
 
 def test_a_tool_not_on_path_says_where_it_comes_from(stage, capsys):
