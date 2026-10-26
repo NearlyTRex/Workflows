@@ -95,6 +95,15 @@ def test_tools_are_put_on_path(tmp_path, capsys):
     assert sorted(launcher.name for launcher in bin_dir.iterdir()) == ["ci-clang-tidy", "ci-cpp-coverage", "ci-msix", "ci-phase"]
 
 
+def test_windows_gets_cmd_launchers_too(tmp_path, capsys):
+    run(tmp_path, capsys, TOOLS=str(ACTION), RUNNER_OS="Windows")
+    bin_dir = tmp_path / "temp" / "ci-tools"
+    assert sorted(launcher.name for launcher in bin_dir.glob("*.cmd")) == [
+        "ci-clang-tidy.cmd", "ci-cpp-coverage.cmd", "ci-msix.cmd", "ci-phase.cmd"]
+    assert (bin_dir / "ci-msix.cmd").read_bytes() == (
+        f'@"{build_env.sys.executable}" "{ACTION / "ci_msix"}.py" %*\r\n'.encode())
+
+
 def test_reads_the_process_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_ENV", str(tmp_path / "env"))
     monkeypatch.setenv("PARALLEL", "true")

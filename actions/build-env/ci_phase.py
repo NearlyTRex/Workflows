@@ -10,6 +10,7 @@ its exit status is returned.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -60,7 +61,9 @@ def main(argv=None):
     print(f"::group::{name}", flush=True)
     start = time.monotonic()
     try:
-        status = subprocess.run(command, check=False).returncode
+        # Found on PATH as Windows would, extensions included, so a .cmd
+        # launcher such as ci-msix's runs; the name as given otherwise.
+        status = subprocess.run([shutil.which(command[0]) or command[0], *command[1:]], check=False).returncode
         if status < 0:
             status = 128 - status  # killed by a signal, reported as a shell would
     except OSError as error:

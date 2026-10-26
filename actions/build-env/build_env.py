@@ -14,7 +14,8 @@ CCACHE=true     route compilers through ccache (Linux and macOS): CMake reads th
                 CCACHE_WRAPPERS (default /usr/lib/ccache on Linux, Homebrew's libexec on macOS).
 TOOLS=DIR       put ci-phase, ci-clang-tidy, ci-cpp-coverage and ci-msix on PATH: bash launchers
                 in $RUNNER_TEMP/ci-tools that run DIR/ci_phase.py, DIR/ci_clang_tidy.py,
-                DIR/ci_cpp_coverage.py and DIR/ci_msix.py with this Python.
+                DIR/ci_cpp_coverage.py and DIR/ci_msix.py with this Python, and on Windows
+                .cmd launchers beside them, which programs other than bash can start.
 """
 
 import os
@@ -42,6 +43,9 @@ def install_tools(env):
         launcher.write_text(f'#!/usr/bin/env bash\nexec "{sys.executable}" "{Path(tools, tool)}.py" "$@"\n',
                             encoding="utf-8")
         launcher.chmod(0o755)
+        if env.get("RUNNER_OS") == "Windows":
+            launcher.with_suffix(".cmd").write_text(f'@"{sys.executable}" "{Path(tools, tool)}.py" %*\r\n',
+                                                    encoding="utf-8", newline="")
     append(env, "GITHUB_PATH", [str(bin_dir)])
     print(f"ci-phase, ci-clang-tidy, ci-cpp-coverage and ci-msix in {bin_dir}")
 
