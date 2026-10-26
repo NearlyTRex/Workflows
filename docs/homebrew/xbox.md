@@ -10,9 +10,11 @@ when the runner's Visual Studio has no store libraries for `msvc-arch`, rather t
 desktop CRT.
 
 A UWP executable is an ordinary MSVC build with `WINAPI_FAMILY=WINAPI_FAMILY_APP`, linked with
-`/APPCONTAINER` against `WindowsApp.lib`:
+`/APPCONTAINER` against `WindowsApp.lib`. C++/WinRT needs C++20: before it, it uses MSVC's
+experimental coroutines, which current MSVC refuses with error STL1011.
 
 ```cmake
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_LIBRARIES "WindowsApp.lib")
 add_executable(app WIN32 app.cpp)
 target_compile_definitions(app PRIVATE WINAPI_FAMILY=WINAPI_FAMILY_APP UNICODE _UNICODE)

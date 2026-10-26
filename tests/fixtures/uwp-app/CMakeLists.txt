@@ -5,7 +5,9 @@
 cmake_minimum_required(VERSION 3.21)
 project(UwpFixture VERSION 1.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+# C++/WinRT uses the standard coroutines from C++20 on; before, it needs MSVC's
+# experimental ones, which current MSVC refuses (STL1011).
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # A UWP app links WindowsApp.lib, not the desktop libraries CMake adds by default.
 set(CMAKE_CXX_STANDARD_LIBRARIES "WindowsApp.lib")
