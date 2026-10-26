@@ -50,6 +50,16 @@ def test_a_signal_is_reported_as_a_shell_would(monkeypatch):
     assert ci_phase.main(["Crash", "sh", "-c", "kill -TERM $$"]) == 128 + 15
 
 
+def test_the_command_is_found_on_path(tmp_path, monkeypatch, capfd):
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    tool = tmp_path / "some-tool"
+    tool.write_text(f"#!{sys.executable}\nprint('found')\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{ci_phase.os.pathsep}{ci_phase.os.environ['PATH']}")
+    assert ci_phase.main(["Tool", "some-tool"]) == 0
+    assert "found" in capfd.readouterr().out
+
+
 def test_a_missing_command(monkeypatch, capfd):
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     assert ci_phase.main(["Missing", "/no/such/command"]) == 127

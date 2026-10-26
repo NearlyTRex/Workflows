@@ -143,6 +143,75 @@ jobs:
       artifact: fixture-cpp-${{ matrix.os }}
       artifact-path: build/fixture_test*
 
+  # The PS4 fixture cross-built with the OpenOrbis SDK, made into eboot.bin and
+  # a .prx, and packaged and validated with the SDK's own tools, so the toolchain
+  # file and package helpers are tested as callers use them.
+  ps4:
+    name: PS4
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    with:
+      openorbis-version: 0.5.4
+      build-command: |
+        ci-phase Configure cmake -S tests/fixtures/ps4-app -B build -G Ninja \
+          -DCMAKE_TOOLCHAIN_FILE="$OPENORBIS_TOOLCHAIN_FILE"
+        ci-phase Build cmake --build build
+      # What the package holds, listed by the SDK's PkgTool from the package itself.
+      test-command: |
+        PkgTool.Core pkg_listentries build/IV0000-WFLO00001_00-WORKFLOWSFIXTURE.pkg | tee entries.txt
+        PkgTool.Core sfo_listentries build/fixture_pkg-ps4/stage/sce_sys/param.sfo | tee sfo.txt
+        grep -q "Workflows PS4 Fixture" sfo.txt
+      artifact: fixture-ps4
+      artifact-path: build/IV0000-WFLO00001_00-WORKFLOWSFIXTURE.pkg
+
+  # The Switch fixture built in devkitPro's pinned image with devkitPro's own
+  # Switch.cmake, and made into an NRO with a NACP and a romfs; ccache too, so
+  # its install and launcher are tested inside a container.
+  switch:
+    name: Switch
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    with:
+      devkitpro: switch
+      ccache: true
+      cache-key: fixture-switch
+      build-command: |
+        ci-phase Configure cmake -S tests/fixtures/switch-app -B build -G Ninja \
+          -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/Switch.cmake"
+        ci-phase Build cmake --build build
+      # An NRO's header carries NRO0 at byte 16.
+      test-command: test "$(head -c 20 build/fixture.nro | tail -c 4)" = NRO0
+      artifact: fixture-switch
+      artifact-path: build/fixture.nro
+
+  # The UWP fixture built with MSVC in uwp mode, and packaged by ci-msix as a
+  # signed MSIX, with the VC++ runtime bundled and every import checked, as an
+  # Xbox Dev Mode app would be.
+  uwp:
+    name: UWP
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    with:
+      runs-on: windows-latest
+      msvc-uwp: true
+      build-command: |
+        ci-phase Configure cmake -S tests/fixtures/uwp-app -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        ci-phase Build cmake --build build
+        mkdir -p build/stage/Assets
+        cp build/fixture.exe build/stage/
+        cp tests/fixtures/uwp-app/Assets/*.png build/stage/Assets/
+        ci-phase Package ci-msix --dir build/stage --manifest tests/fixtures/uwp-app/Package.appxmanifest \
+          --out build/fixture.msix --version "1.0.$GITHUB_RUN_NUMBER" --publisher "CN=Workflows Fixture" \
+          --vclibs --check-imports
+      test-command: test -s build/fixture.msix && test -s build/fixture.cer
+      artifact: fixture-uwp
+      artifact-path: |
+        build/fixture.msix
+        build/fixture.cer
+
   # The C++ fixture's MSVC build, run on Windows by windows-test under full
   # page heap.
   windows-test:

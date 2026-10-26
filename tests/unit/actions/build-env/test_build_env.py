@@ -91,8 +91,17 @@ def test_tools_are_put_on_path(tmp_path, capsys):
     env, path, out = run(tmp_path, capsys, TOOLS=str(ACTION), RUNNER_OS="Linux")
     bin_dir = tmp_path / "temp" / "ci-tools"
     assert env == {} and path == [str(bin_dir)]
-    assert f"ci-phase, ci-clang-tidy and ci-cpp-coverage in {bin_dir}" in out
-    assert sorted(launcher.name for launcher in bin_dir.iterdir()) == ["ci-clang-tidy", "ci-cpp-coverage", "ci-phase"]
+    assert f"ci-phase, ci-clang-tidy, ci-cpp-coverage and ci-msix in {bin_dir}" in out
+    assert sorted(launcher.name for launcher in bin_dir.iterdir()) == ["ci-clang-tidy", "ci-cpp-coverage", "ci-msix", "ci-phase"]
+
+
+def test_windows_gets_cmd_launchers_too(tmp_path, capsys):
+    run(tmp_path, capsys, TOOLS=str(ACTION), RUNNER_OS="Windows")
+    bin_dir = tmp_path / "temp" / "ci-tools"
+    assert sorted(launcher.name for launcher in bin_dir.glob("*.cmd")) == [
+        "ci-clang-tidy.cmd", "ci-cpp-coverage.cmd", "ci-msix.cmd", "ci-phase.cmd"]
+    assert (bin_dir / "ci-msix.cmd").read_bytes() == (
+        f'@"{build_env.sys.executable}" "{ACTION / "ci_msix"}.py" %*\r\n'.encode())
 
 
 def test_reads_the_process_environment(tmp_path, monkeypatch):

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ci-msix sets Identity's Version and Publisher when it packages this. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  IgnorableNamespaces="uap">
+
+  <Identity Name="Workflows.UwpFixture" Publisher="CN=Placeholder" Version="0.0.0.0" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Workflows UWP Fixture</DisplayName>
+    <PublisherDisplayName>Workflows</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="fixture.exe" EntryPoint="Fixture.App">
+      <uap:VisualElements DisplayName="Workflows UWP Fixture" Description="The Workflows UWP fixture"
+        BackgroundColor="#107c10" Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+</Package>

@@ -1,0 +1,1 @@
+Packed into the NRO by nx_create_nro from the ROMFS directory.

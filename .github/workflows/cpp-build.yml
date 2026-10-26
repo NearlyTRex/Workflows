@@ -24,6 +24,13 @@ on:
           homebrew SDK's, pinned by digest (image@sha256:...). Empty runs on the runner itself.
         type: string
         default: ""
+      devkitpro:
+        description: >-
+          A devkitPro platform to build for, in devkitPro's own image pinned here, on a Linux
+          runner: switch (devkitA64, libnx, the Switch portlibs and tools, DEVKITPRO set). Not
+          with container
+        type: string
+        default: ""
       submodules:
         description: false, true or recursive
         type: string
@@ -55,10 +62,25 @@ on:
         description: vcvarsall architecture, e.g. x64, x86, x64_arm64
         type: string
         default: x64
+      msvc-uwp:
+        description: >-
+          Set MSVC up for UWP apps, such as Xbox Dev Mode homebrew: vcvarsall's uwp mode, which
+          links the store CRT, with WindowsApp.lib added to every link through LINK, and makeappx
+          and signtool on PATH for ci-msix. Implies msvc; Windows runners only
+        type: boolean
+        default: false
       llvm-version:
         description: >-
           An LLVM release to install from apt.llvm.org beside the runner's clang, e.g. 23:
           clang-N, clang-tidy-N, clang-format-N, lld-N, llvm-N and libc++; Linux runners only
+        type: string
+        default: ""
+      openorbis-version:
+        description: >-
+          An OpenOrbis PS4 Toolchain release to install for PS4 homebrew, e.g. 0.5.4, with the LLVM
+          release it was built with: OO_PS4_TOOLCHAIN, its tools (create-fself, create-gp4,
+          PkgTool.Core) on PATH, and a CMake toolchain file as OPENORBIS_TOOLCHAIN_FILE; Linux
+          runners only
         type: string
         default: ""
       cache-paths:
@@ -135,12 +157,30 @@ jobs:
     name: Build
     runs-on: ${{ inputs.runs-on }}
     # An empty string is not a valid container, so no image means null. The
-    # image is the caller's, who pins it by digest as with any other input.
-    container: ${{ inputs.container || null }} # zizmor: ignore[unpinned-images]
+    # caller's image is pinned by digest by the caller, as with any other input;
+    # devkitpro's are pinned here, and self-tool-versions says when one is out.
+    container: ${{ inputs.container || fromJSON('{"switch":"devkitpro/devkita64:20260219@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282"}')[inputs.devkitpro] || null }} # zizmor: ignore[unpinned-images]
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
     steps:
+      # A devkitpro name with no image, or one beside container, would otherwise
+      # build on the runner, or in the wrong image, without saying so.
+      - name: Check devkitpro
+        if: inputs.devkitpro != ''
+        shell: bash
+        env:
+          PLATFORM: ${{ inputs.devkitpro }}
+          CONTAINER: ${{ inputs.container }}
+        run: |
+          if [ "$PLATFORM" != switch ]; then
+            echo "::error::devkitpro must be switch, not '$PLATFORM'"; exit 1
+          fi
+          if [ -n "$CONTAINER" ]; then
+            echo "::error::devkitpro runs in devkitPro's image, so it can't be given with container"; exit 1
+          fi
+          echo "devkitPro $PLATFORM in $DEVKITPRO"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -180,21 +220,35 @@ jobs:
           brew install "${packages[@]}"
 
       # The same environment a Developer Command Prompt gets, exported to every
-      # later step, found with vswhere rather than a hard-coded edition path.
+      # later step, found with vswhere rather than a hard-coded edition path. In
+      # uwp mode, the store libraries must be there for this toolset, or every
+      # link would quietly pick the desktop CRT; and the store CRT's startup
+      # calls RoInitialize, so LINK, which link.exe reads before its command
+      # line, adds WindowsApp.lib to every link, a build system's compiler
+      # checks included, ahead of the desktop libraries they name.
       - name: Set up MSVC
-        if: inputs.msvc
+        if: inputs.msvc || inputs.msvc-uwp
         shell: pwsh
         env:
           ARCH: ${{ inputs.msvc-arch }}
+          UWP: ${{ inputs.msvc-uwp }}
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vs) { throw "No Visual Studio with the C++ tools found" }
           $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvarsall.bat"
-          cmd /c "`"$vcvars`" $env:ARCH > nul && set" | ForEach-Object {
-            if ($_ -match '^([^=]+)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
+          $mode = if ($env:UWP -eq 'true') { 'uwp' } else { '' }
+          $vars = @{}
+          cmd /c "`"$vcvars`" $env:ARCH $mode > nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { $vars[$Matches[1]] = $Matches[2] }
           }
-          Write-Host "MSVC environment from $vs ($env:ARCH)"
+          if ($mode) {
+            $store = $vars['LIB'] -split ';' | Where-Object { $_ -match '\\store(\\|$)' }
+            if (-not $store) { throw "vcvarsall's uwp mode found no store libraries for $env:ARCH in $vs" }
+            $vars['LINK'] = "WindowsApp.lib $($vars['LINK'])".Trim()
+          }
+          $vars.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
+          Write-Host "MSVC environment from $vs ($env:ARCH $mode)"
 
       # LLVM's own repository, for a newer clang and libc++ than the distribution ships.
       - name: Install LLVM
@@ -202,6 +256,13 @@ jobs:
         uses: $/actions/llvm
         with:
           version: ${{ inputs.llvm-version }}
+
+      # A pinned SDK release, checked against its sha256: see actions/openorbis.
+      - name: Install OpenOrbis
+        if: inputs.openorbis-version != '' && runner.os == 'Linux'
+        uses: $/actions/openorbis
+        with:
+          version: ${{ inputs.openorbis-version }}
 
       - name: Cache
         if: inputs.cache-paths != ''

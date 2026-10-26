@@ -12,16 +12,17 @@ CCACHE=true     route compilers through ccache (Linux and macOS): CMake reads th
                 caches each compile once. CCACHE_BASEDIR makes paths relative, so a hit doesn't
                 depend on where the runner checked out. Uses CCACHE_DIR, MAX_SIZE, SLOPPINESS and
                 CCACHE_WRAPPERS (default /usr/lib/ccache on Linux, Homebrew's libexec on macOS).
-TOOLS=DIR       put ci-phase, ci-clang-tidy and ci-cpp-coverage on PATH: bash launchers in
-                $RUNNER_TEMP/ci-tools that run DIR/ci_phase.py, DIR/ci_clang_tidy.py and
-                DIR/ci_cpp_coverage.py with this Python.
+TOOLS=DIR       put ci-phase, ci-clang-tidy, ci-cpp-coverage and ci-msix on PATH: bash launchers
+                in $RUNNER_TEMP/ci-tools that run DIR/ci_phase.py, DIR/ci_clang_tidy.py,
+                DIR/ci_cpp_coverage.py and DIR/ci_msix.py with this Python, and on Windows
+                .cmd launchers beside them, which programs other than bash can start.
 """
 
 import os
 import sys
 from pathlib import Path
 
-TOOLS = ("ci_phase", "ci_clang_tidy", "ci_cpp_coverage")
+TOOLS = ("ci_phase", "ci_clang_tidy", "ci_cpp_coverage", "ci_msix")
 
 # Where each runner's ccache keeps its compiler-named wrappers. On macOS the
 # action passes CCACHE_WRAPPERS from `brew --prefix`; this is Apple silicon's.
@@ -42,8 +43,11 @@ def install_tools(env):
         launcher.write_text(f'#!/usr/bin/env bash\nexec "{sys.executable}" "{Path(tools, tool)}.py" "$@"\n',
                             encoding="utf-8")
         launcher.chmod(0o755)
+        if env.get("RUNNER_OS") == "Windows":
+            launcher.with_suffix(".cmd").write_text(f'@"{sys.executable}" "{Path(tools, tool)}.py" %*\r\n',
+                                                    encoding="utf-8", newline="")
     append(env, "GITHUB_PATH", [str(bin_dir)])
-    print(f"ci-phase, ci-clang-tidy and ci-cpp-coverage in {bin_dir}")
+    print(f"ci-phase, ci-clang-tidy, ci-cpp-coverage and ci-msix in {bin_dir}")
 
 
 def set_parallel(env):

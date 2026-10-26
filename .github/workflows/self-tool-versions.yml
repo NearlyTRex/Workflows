@@ -1,8 +1,10 @@
 name: Self Tool Versions
 
 # Tools Dependabot can't track. Chocolatey isn't one of its ecosystems, so the
-# Inno Setup version inno-setup.yml installs would go stale silently; this run
-# fails, with the version to move to, when a newer one is out.
+# Inno Setup version inno-setup.yml installs would go stale silently, as would
+# the OpenOrbis release actions/openorbis pins and the devkitPro images
+# cpp-build.yml names inside an expression; this run fails, with the version to
+# move to, when a newer one is out.
 on:
   schedule:
     - cron: "43 6 * * 1"

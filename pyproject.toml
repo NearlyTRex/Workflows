@@ -17,6 +17,6 @@ standards = [
 
 [tool.testrex.baseline]
 # Lowered as each is fixed, never raised
-documented = 111
+documented = 110
 long-functions = 9
 long-modules = 1
