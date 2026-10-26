@@ -62,6 +62,13 @@ on:
         description: vcvarsall architecture, e.g. x64, x86, x64_arm64
         type: string
         default: x64
+      msvc-uwp:
+        description: >-
+          Set MSVC up for UWP apps, such as Xbox Dev Mode homebrew: vcvarsall's uwp mode, which
+          links the store CRT and WindowsApp.lib, with makeappx and signtool on PATH for ci-msix.
+          Implies msvc; Windows runners only
+        type: boolean
+        default: false
       llvm-version:
         description: >-
           An LLVM release to install from apt.llvm.org beside the runner's clang, e.g. 23:
@@ -213,21 +220,31 @@ jobs:
           brew install "${packages[@]}"
 
       # The same environment a Developer Command Prompt gets, exported to every
-      # later step, found with vswhere rather than a hard-coded edition path.
+      # later step, found with vswhere rather than a hard-coded edition path. In
+      # uwp mode, the store libraries must be there for this toolset, or every
+      # link would quietly pick the desktop CRT.
       - name: Set up MSVC
-        if: inputs.msvc
+        if: inputs.msvc || inputs.msvc-uwp
         shell: pwsh
         env:
           ARCH: ${{ inputs.msvc-arch }}
+          UWP: ${{ inputs.msvc-uwp }}
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vs) { throw "No Visual Studio with the C++ tools found" }
           $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvarsall.bat"
-          cmd /c "`"$vcvars`" $env:ARCH > nul && set" | ForEach-Object {
-            if ($_ -match '^([^=]+)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
+          $mode = if ($env:UWP -eq 'true') { 'uwp' } else { '' }
+          $vars = @{}
+          cmd /c "`"$vcvars`" $env:ARCH $mode > nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { $vars[$Matches[1]] = $Matches[2] }
           }
-          Write-Host "MSVC environment from $vs ($env:ARCH)"
+          if ($mode) {
+            $store = $vars['LIB'] -split ';' | Where-Object { $_ -match '\\store(\\|$)' }
+            if (-not $store) { throw "vcvarsall's uwp mode found no store libraries for $env:ARCH in $vs" }
+          }
+          $vars.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
+          Write-Host "MSVC environment from $vs ($env:ARCH $mode)"
 
       # LLVM's own repository, for a newer clang and libc++ than the distribution ships.
       - name: Install LLVM

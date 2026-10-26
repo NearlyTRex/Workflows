@@ -26,7 +26,7 @@ so one pin fixes the whole chain. The actions are:
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
 | `llvm` | An LLVM release from apt.llvm.org beside the runner's clang, for `cpp-build`'s `llvm-version` |
 | `openorbis` | A pinned OpenOrbis PS4 Toolchain release, its LLVM and its CMake toolchain and helpers, for `cpp-build`'s `openorbis-version` |
-| `build-env` | Parallel jobs, ccache, and `ci-phase`, `ci-clang-tidy` and `ci-cpp-coverage` on `PATH` for `cpp-build` |
+| `build-env` | Parallel jobs, ccache, and `ci-phase`, `ci-clang-tidy`, `ci-cpp-coverage` and `ci-msix` on `PATH` for `cpp-build` |
 | `ccache-stats` | Prints ccache's statistics and warns when `ccache-max-size` was too small |
 | `windows-test` | Runs a folder of test programs on Windows under full page heap, and a failing one again under cdb, for `windows-test` |
 | `check-json`, `check-toml` | Parse every tracked JSON or TOML file |
@@ -61,13 +61,13 @@ standards in `pyproject.toml`'s `[tool.testrex]`, whose baseline counts only eve
 
 `self-ci.yml` and `self-security.yml` run this repo's checks through its own reusable workflows. The
 fixtures in `tests/fixtures` go through `python-ci`, `cpp-build` (the PS4 fixture with
-`openorbis-version`, packaged and validated, and the Switch fixture with `devkitpro`, made into an
-NRO), `compose-test`, `inno-setup` and `container-scan`, and `release.yml` runs as a dry run over
-the C++ fixture's builds, so a change here is tested by the same workflows callers use, release
-included. The C++ fixture's builds are also attested for real, except on pull requests from forks,
-which can't sign. The library releases itself from `VERSION` through `self-prepare-release.yml` and
-`self-release.yml`, which runs all of `self-ci.yml` before it publishes: every repo pinned here is
-offered the release.
+`openorbis-version`, packaged and validated, the Switch fixture with `devkitpro`, made into an NRO,
+and the UWP fixture with `msvc-uwp`, packaged by `ci-msix`), `compose-test`, `inno-setup` and
+`container-scan`, and `release.yml` runs as a dry run over the C++ fixture's builds, so a change
+here is tested by the same workflows callers use, release included. The C++ fixture's builds are
+also attested for real, except on pull requests from forks, which can't sign. The library releases
+itself from `VERSION` through `self-prepare-release.yml` and `self-release.yml`, which runs all of
+`self-ci.yml` before it publishes: every repo pinned here is offered the release.
 
 ### Canary runs before a release
 

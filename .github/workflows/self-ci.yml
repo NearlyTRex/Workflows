@@ -186,6 +186,32 @@ jobs:
       artifact: fixture-switch
       artifact-path: build/fixture.nro
 
+  # The UWP fixture built with MSVC in uwp mode, and packaged by ci-msix as a
+  # signed MSIX, with the VC++ runtime bundled and every import checked, as an
+  # Xbox Dev Mode app would be.
+  uwp:
+    name: UWP
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    with:
+      runs-on: windows-latest
+      msvc-uwp: true
+      build-command: |
+        ci-phase Configure cmake -S tests/fixtures/uwp-app -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        ci-phase Build cmake --build build
+        mkdir -p build/stage/Assets
+        cp build/fixture.exe build/stage/
+        cp tests/fixtures/uwp-app/Assets/*.png build/stage/Assets/
+        ci-phase Package ci-msix --dir build/stage --manifest tests/fixtures/uwp-app/Package.appxmanifest \
+          --out build/fixture.msix --version "1.0.$GITHUB_RUN_NUMBER" --publisher "CN=Workflows Fixture" \
+          --vclibs --check-imports
+      test-command: test -s build/fixture.msix && test -s build/fixture.cer
+      artifact: fixture-uwp
+      artifact-path: |
+        build/fixture.msix
+        build/fixture.cer
+
   # The C++ fixture's MSVC build, run on Windows by windows-test under full
   # page heap.
   windows-test:

@@ -43,6 +43,7 @@ page lists the inputs, their defaults and the permissions.
 | [C and C++](docs/cpp.md) | `cpp-build`, `windows-test`, `inno-setup` | Builds on any runner with MSVC, LLVM, ccache and clang-tidy; Windows tests under page heap; installers |
 | [PS4 homebrew](docs/homebrew/ps4.md) | `cpp-build` with `openorbis-version` | The OpenOrbis SDK, a CMake toolchain, and `eboot.bin`, `.prx` and `.pkg` helpers |
 | [Switch homebrew](docs/homebrew/switch.md) | `cpp-build` with `devkitpro: switch` | devkitPro's devkitA64 image, with libnx, the portlibs and the Switch tools |
+| [Xbox homebrew](docs/homebrew/xbox.md) | `cpp-build` with `msvc-uwp` | MSVC for UWP apps in Dev Mode, and `ci-msix` to package and sign them |
 | [Compose](docs/compose.md) | `compose-test` | Starts a Compose stack, waits for it to be healthy, and tests it |
 | [Releases](docs/releases.md) | `prepare-release`, `release-check`, `release`, `attest` | Version bumps by pull request, tagging, assets, checksums and provenance |
 | [Automation](docs/automation.md) | `scheduled-update`, `license-year` | Pull requests for regenerated data and the license year |

@@ -2,7 +2,7 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `llvm-version`, `openorbis-version`, `devkitpro`, `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `msvc-uwp` (false), `llvm-version`, `openorbis-version`, `devkitpro`, `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
 | `windows-test.yml` | `artifact`, `runs-on` (windows-latest), `page-heap` (true), `timeout` (300), `timeout-minutes` (30) | `contents: read` |
 | `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
@@ -17,8 +17,9 @@ the like), restores `cache-paths` keyed on `cache-key-files`, and uploads `artif
 `artifact`. The cache is named by `cache-key`, or else the artifact name, so a CI build and a
 release build of the same thing can share one. `container` runs the whole job inside an image on a
 Linux runner, which is how a toolchain that ships as an image builds here. Console homebrew has
-inputs of its own: `openorbis-version` for the [PS4](homebrew/ps4.md) and `devkitpro` for the
-[Switch](homebrew/switch.md). For several platforms or configurations, the caller passes a matrix:
+inputs of its own: `openorbis-version` for the [PS4](homebrew/ps4.md), `devkitpro` for the
+[Switch](homebrew/switch.md), and `msvc-uwp` with `ci-msix` for the [Xbox](homebrew/xbox.md). For
+several platforms or configurations, the caller passes a matrix:
 
 ```yaml
 build:
@@ -61,8 +62,9 @@ every run, and the newest restored. `cache-paths` is restored only while
 `cache-key-files` are unchanged and saved only by a passing run, so it suits fetched
 dependencies; `rolling-cache-paths` suits caches that follow the code.
 
-The build and test commands also have three commands on `PATH` (Linux and macOS; `ci-phase` on
-Windows too):
+The build and test commands also have these commands on `PATH` (Linux and macOS; `ci-phase` on
+Windows too, and `ci-msix`, described on the [Xbox](homebrew/xbox.md#ci-msix) page, on Windows
+only):
 
 - **`ci-phase NAME COMMAND...`** runs one phase of the step as a collapsible log group, and adds
   NAME and its time to a table on the run's summary page, so a slow build shows where the time
