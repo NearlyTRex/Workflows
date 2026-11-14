@@ -236,7 +236,7 @@ jobs:
           if [ -n "$CONTAINER$DEVKITPRO" ]; then
             echo "::error::linux-image picks the job's image, so it can't be given with container or devkitpro"; exit 1
           fi
-          ldd --version | head -n 1
+          getconf GNU_LIBC_VERSION
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

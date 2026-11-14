@@ -25,6 +25,21 @@ def test_parses_floors_by_kind():
     assert check_os_floor.parse_floors("glibc:2.35  MacOS:11.0") == {"glibc": (2, 35), "macos": (11, 0)}
 
 
+@pytest.mark.parametrize("version, than, is_newer", [
+    ((11, 0, 0), (11, 0), False), ((11, 0), (11, 0, 0), False), ((11, 0, 1), (11, 0), True),
+    ((2, 34), (2, 35), False), ((3, 4, 30), (3, 4, 29, 0), True), ((0, 0), (0,), False),
+])
+def test_trailing_zeros_do_not_make_a_version_newer(version, than, is_newer):
+    assert check_os_floor.newer(version, than) is is_newer
+
+
+def test_a_macho_at_its_floor_passes_however_the_floor_is_written(tmp_path, capsys):
+    (tmp_path / "app").write_bytes(build_macho([build_version((11, 0, 0))]))
+    status, lines = run_main(capsys, "macos:11.0", tmp_path / "app")
+    assert status == 0
+    assert lines == [f"macos floor 11.0: highest need 11.0.0 ({tmp_path}/app)"]
+
+
 @pytest.mark.parametrize("word", ["glibc", ":2.35", "glibc:", "glibc:2.x"])
 def test_refuses_a_word_that_is_not_kind_and_version(word):
     with pytest.raises(ValueError, match=f"'{word}' is not KIND:VERSION"):

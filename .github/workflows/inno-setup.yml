@@ -47,6 +47,11 @@ jobs:
     name: Build
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 30
+    # The scripts are PowerShell, Windows' default shell. Named, since with
+    # runs-on an input actionlint can't tell the runner is Windows.
+    defaults:
+      run:
+        shell: pwsh
     permissions:
       contents: read
     steps:

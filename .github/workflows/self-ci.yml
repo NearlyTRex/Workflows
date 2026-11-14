@@ -201,6 +201,9 @@ jobs:
     permissions:
       contents: read
     with:
+      # OpenOrbis 0.5.4 is built with LLVM 18, which apt.llvm.org has no
+      # packages of for 26.04, the image ubuntu-latest moved to.
+      runs-on: ubuntu-24.04
       openorbis-version: 0.5.4
       build-command: |
         ci-phase Configure cmake -S tests/fixtures/ps4-app -B build -G Ninja \

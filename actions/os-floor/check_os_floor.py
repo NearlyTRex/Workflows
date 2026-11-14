@@ -42,6 +42,19 @@ def format_version(version):
     return ".".join(str(part) for part in version)
 
 
+def trimmed(version):
+    """The version without trailing zeros, so 11.0.0 and 11.0 compare equal."""
+    parts = list(version)
+    while parts and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
+
+
+def newer(version, than):
+    """Whether version is newer than than, trailing zeros aside."""
+    return trimmed(version) > trimmed(than)
+
+
 def parse_floors(text):
     """{kind: version} from KIND:VERSION words; ValueError naming the first that isn't one."""
     floors = {}
@@ -212,9 +225,9 @@ def weigh(needs, label, floors, highest, failures):
         if kind not in floors:
             continue
         need = max(versions)
-        if kind not in highest or need > highest[kind][0]:
+        if kind not in highest or newer(need, highest[kind][0]):
             highest[kind] = (need, label)
-        if need > floors[kind]:
+        if newer(need, floors[kind]):
             failures.append(f"{label} needs {kind} {format_version(need)}, "
                             f"above the {format_version(floors[kind])} floor")
 
