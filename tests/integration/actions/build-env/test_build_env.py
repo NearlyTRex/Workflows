@@ -11,7 +11,7 @@ from script_helpers import ROOT, load_script
 ACTION = ROOT / "actions" / "build-env"
 build_env = load_script("actions/build-env/build_env.py")
 
-pytestmark = pytest.mark.requires_binary("bash")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("bash")]
 
 
 def test_the_launchers_run_the_tools_with_this_python(tmp_path):

@@ -7,7 +7,7 @@ import pytest
 from script_helpers import load_script
 from git_helpers import git
 
-pytestmark = pytest.mark.requires_binary("git")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git")]
 
 commit_patch = load_script("actions/commit-patch/commit_patch.py")
 diff_paths = load_script("actions/diff-paths/diff_paths.py")

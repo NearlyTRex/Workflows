@@ -3,7 +3,7 @@ import pytest
 from script_helpers import load_script
 from git_helpers import repo_with
 
-pytestmark = pytest.mark.requires_binary("git")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git")]
 
 check_markdown_fences = load_script("actions/check-markdown-fences/check_markdown_fences.py")
 find_problems = check_markdown_fences.find_problems

@@ -38,13 +38,13 @@ SUMMARY_FILES = 50
 
 def threshold(value):
     """One --fail-under value: PERCENT for every gated metric, or METRIC=PERCENT."""
-    metric, _, percent = value.rpartition("=")
+    metric, _, amount = value.rpartition("=")
     if metric and metric not in METRICS:
         raise argparse.ArgumentTypeError(f"unknown metric {metric!r}; choose from {', '.join(METRICS)}")
     try:
-        number = float(percent)
+        number = float(amount)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"not a percentage: {percent!r}") from None
+        raise argparse.ArgumentTypeError(f"not a percentage: {amount!r}") from None
     return {metric: number} if metric else dict.fromkeys(GATED, number)
 
 

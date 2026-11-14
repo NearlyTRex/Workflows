@@ -143,7 +143,7 @@ def cleanup(repo):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("ref", nargs="?", help="Library branch, tag or commit to try")
     parser.add_argument("repos", nargs="*", metavar="repo")
     parser.add_argument("--cleanup", action="store_true", help="Delete the canary branches instead")

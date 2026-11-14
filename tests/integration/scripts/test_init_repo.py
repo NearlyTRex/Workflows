@@ -7,7 +7,7 @@ import yaml
 
 from script_helpers import ROOT, load_script
 
-pytestmark = pytest.mark.requires_binary("git")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git")]
 
 init_repo = load_script("scripts/init_repo.py")
 

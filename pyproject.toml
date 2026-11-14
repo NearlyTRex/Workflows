@@ -3,6 +3,8 @@
 
 [tool.testrex]
 tests_dir = "tests"
+# A sample project the integration tests build and test, not tests of this repo
+data_dirs = ["fixtures"]
 min_test_files = 20
 library_targets = ["actions", "scripts"]
 # Library code is documented with docstrings, in at most three lines before any sections.

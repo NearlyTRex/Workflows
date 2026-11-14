@@ -5,7 +5,7 @@ import pytest
 
 from script_helpers import ROOT, load_script
 
-pytestmark = pytest.mark.requires_binary("git")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git")]
 
 canary = load_script("scripts/canary.py")
 
