@@ -41,10 +41,10 @@ Windows, where plain `make` would otherwise run one job at a time.
 
 With `ccache: true` on Linux and macOS runners, it also installs ccache and routes CMake's
 compilers through it with CMake's launcher setting, so a build only recompiles what changed
-since the last run. Each run saves its ccache under a new key and the next restores the newest one, so the cache
-follows the code, and the hit rate is printed after the build. A failed or cancelled run saves
-too: it started from the newest cache and only added to it, and a job whose cold build outlasts
-`timeout-minutes` gets further each run instead of starting cold every time.
+since the last run. Each run saves its ccache under a new key and the next restores the newest
+one, so the cache follows the code, and the hit rate is printed after the build. A failed or
+cancelled run saves too: it started from the newest cache and only added to it, and a job whose
+cold build outlasts `timeout-minutes` gets further each run instead of starting cold every time.
 
 ccache knows a compiler by the contents of its binary, not by its modification time, ccache's
 default. Every runner installs ccache and often the toolchain afresh, so their times are new
