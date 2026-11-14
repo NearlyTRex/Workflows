@@ -6,12 +6,15 @@ runs on every runner.
 PARALLEL=true   build on every core: CMAKE_BUILD_PARALLEL_LEVEL, and MAKEFLAGS=-j off Windows
                 (nmake reads MAKEFLAGS too, and rejects -j). A value the caller already set is
                 left alone.
-CCACHE=true     route compilers through ccache (Linux and macOS): CMake reads the launcher
-                variables when it configures, and other build systems call compilers by name, so
-                ccache's wrappers go first on PATH as well. ccache notices when it is both and
-                caches each compile once. CCACHE_BASEDIR makes paths relative, so a hit doesn't
-                depend on where the runner checked out. Uses CCACHE_DIR, MAX_SIZE, SLOPPINESS and
-                CCACHE_WRAPPERS (default /usr/lib/ccache on Linux, Homebrew's libexec on macOS).
+CCACHE=true     route compilers through ccache (Linux and macOS) by CMake's launcher variables.
+                ccache knows the compiler by its contents, which survive ccache and the
+                toolchain being reinstalled on every runner but change with a new compiler.
+                CCACHE_BASEDIR makes paths relative, so a hit doesn't depend on where the runner
+                checked out. Uses CCACHE_DIR, MAX_SIZE and SLOPPINESS.
+WRAPPERS=true   with CCACHE, also put ccache's compiler-named wrappers first on PATH, for build
+                systems that call compilers by name (CCACHE_WRAPPERS, default /usr/lib/ccache on
+                Linux, Homebrew's libexec on macOS). Not for CMake: it finds the wrapper as its
+                compiler, and ccache then knows the compiler by its own binary instead.
 TOOLS=DIR       put ci-phase, ci-clang-tidy, ci-cpp-coverage and ci-msix on PATH: bash launchers
                 in $RUNNER_TEMP/ci-tools that run DIR/ci_phase.py, DIR/ci_clang_tidy.py,
                 DIR/ci_cpp_coverage.py and DIR/ci_msix.py with this Python, and on Windows
@@ -65,7 +68,7 @@ def set_parallel(env):
 
 
 def set_ccache(env):
-    """Export ccache's settings and CMake's launchers, and put its wrappers on PATH; Linux and macOS only."""
+    """Export ccache's settings and CMake's launchers, and its wrappers if asked; Linux and macOS only."""
     runner = env.get("RUNNER_OS")
     if runner not in CCACHE_WRAPPERS:
         print(f"ccache is set up on Linux and macOS runners only; not on {runner or 'this runner'}")
@@ -76,10 +79,15 @@ def set_ccache(env):
         f"CCACHE_MAXSIZE={env['MAX_SIZE']}",
         f"CCACHE_SLOPPINESS={env['SLOPPINESS']}",
         "CCACHE_COMPRESS=true",
+        # Not mtime, the default: ccache and the toolchain are installed afresh on every
+        # runner, so their times differ every run and nothing would hit. Hashing a compiler's
+        # contents is done once per runner; ccache's inode cache keeps the answer.
+        "CCACHE_COMPILERCHECK=content",
         "CMAKE_C_COMPILER_LAUNCHER=ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER=ccache",
     ])
-    append(env, "GITHUB_PATH", [env.get("CCACHE_WRAPPERS") or CCACHE_WRAPPERS[runner]])
+    if env.get("WRAPPERS") == "true":
+        append(env, "GITHUB_PATH", [env.get("CCACHE_WRAPPERS") or CCACHE_WRAPPERS[runner]])
     print(f"ccache: {env['CCACHE_DIR']}, up to {env['MAX_SIZE']}, sloppiness {env['SLOPPINESS']}")
 
 

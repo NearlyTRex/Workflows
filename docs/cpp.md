@@ -2,7 +2,7 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `msvc-uwp` (false), `llvm-version`, `llvm-on-path` (false), `cmake-version`, `macos-deployment-target`, `openorbis-version`, `devkitpro`, `linux-image`, `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path`, `os-floors`, `os-floor-paths` (artifact-path) | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `msvc-uwp` (false), `llvm-version`, `llvm-on-path` (false), `cmake-version`, `macos-deployment-target`, `openorbis-version`, `devkitpro`, `linux-image`, `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-wrappers` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path`, `os-floors`, `os-floor-paths` (artifact-path) | `contents: read` |
 | `windows-test.yml` | `artifact`, `runs-on` (windows-latest), `page-heap` (true), `timeout` (300), `timeout-minutes` (30) | `contents: read` |
 | `inno-setup.yml` | `runs-on` (windows-latest), `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
@@ -39,13 +39,24 @@ build:
 Builds use every core: `parallel` sets `CMAKE_BUILD_PARALLEL_LEVEL`, and `MAKEFLAGS=-j` off
 Windows, where plain `make` would otherwise run one job at a time.
 
-With `ccache: true` on Linux and macOS runners, it also installs ccache and routes the
-compilers through it, CMake's through its launcher setting and any other build system's through
-ccache's wrappers first on `PATH`, so a build only recompiles what changed since the last run.
-Each run saves its ccache under a new key and the next restores the newest one, so the cache
-follows the code, and the hit rate is printed after the build. A failed or cancelled run saves
-too: it started from the newest cache and only added to it, and a job whose cold build outlasts
-`timeout-minutes` gets further each run instead of starting cold every time.
+With `ccache: true` on Linux and macOS runners, it also installs ccache and routes CMake's
+compilers through it with CMake's launcher setting, so a build only recompiles what changed
+since the last run. Each run saves its ccache under a new key and the next restores the newest
+one, so the cache follows the code, and the hit rate is printed after the build. A failed or
+cancelled run saves too: it started from the newest cache and only added to it, and a job whose
+cold build outlasts `timeout-minutes` gets further each run instead of starting cold every time.
+
+ccache knows a compiler by the contents of its binary, not by its modification time, ccache's
+default. Every runner installs ccache and often the toolchain afresh, so their times are new
+on every run and nothing would hit; the contents stay the same until the compiler changes.
+
+- **Other build systems:** `ccache-wrappers: true` also puts ccache's compiler-named wrappers
+  first on `PATH`, for a make or autotools build that calls `cc` or `clang` by name.
+- **Not with CMake:** CMake then finds a wrapper as its compiler, so every compile runs ccache
+  twice and ccache knows the compiler by its own binary instead, which on macOS changes with
+  every Homebrew install and never hits.
+- **macOS:** `/usr/bin/clang` is a small trampoline into Xcode that stays the same when Xcode
+  changes. Name the compiler `xcrun --find` gives, so ccache sees the real one.
 
 When a build fills `ccache-max-size`, ccache evicts entries as it goes and the saved cache
 holds only the end of the build, so the next run misses on the rest. The stats step then

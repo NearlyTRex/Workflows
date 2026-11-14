@@ -133,9 +133,15 @@ on:
         default: ""
       ccache:
         description: >-
-          Install ccache, route the compilers through it (CMake's launcher, and ccache's wrappers
-          first on PATH for other build systems), and keep its cache between runs, so a build
-          recompiles only what changed. Linux and macOS runners.
+          Install ccache, route CMake's compilers through it with CMake's launcher, and keep its
+          cache between runs, so a build recompiles only what changed. Linux and macOS runners.
+        type: boolean
+        default: false
+      ccache-wrappers:
+        description: >-
+          With ccache, also put ccache's compiler-named wrappers first on PATH, for build systems
+          other than CMake that call compilers by name. Not for CMake builds: CMake then finds a
+          wrapper as its compiler, and ccache knows the compiler by its own binary instead
         type: boolean
         default: false
       ccache-max-size:
@@ -355,6 +361,7 @@ jobs:
           ccache-dir: ${{ runner.temp }}/ccache
           ccache-max-size: ${{ inputs.ccache-max-size }}
           ccache-sloppiness: ${{ inputs.ccache-sloppiness }}
+          ccache-wrappers: ${{ inputs.ccache-wrappers }}
 
       # Every run saves under a new key, and restores the newest earlier one by
       # prefix, so the cache follows the code instead of freezing at its first
