@@ -20,6 +20,9 @@ inputs:
   ccache-sloppiness:
     required: false
     default: pch_defines,time_macros,include_file_mtime,include_file_ctime
+  ccache-wrappers:
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -50,6 +53,7 @@ runs:
         CCACHE_DIR: ${{ inputs.ccache-dir }}
         MAX_SIZE: ${{ inputs.ccache-max-size }}
         SLOPPINESS: ${{ inputs.ccache-sloppiness }}
+        WRAPPERS: ${{ inputs.ccache-wrappers }}
         CCACHE_WRAPPERS: ${{ steps.brew-ccache.outputs.wrappers }}
       # The runner's own Python. On Windows python3 can be the Microsoft Store stub.
       run: |

@@ -58,25 +58,33 @@ def test_nothing_when_all_are_off(tmp_path, capsys):
     assert env == {} and path == [] and out == ""
 
 
-def test_ccache_on_linux(tmp_path, capsys):
+def test_ccache_on_linux_uses_the_launcher_and_the_compilers_contents(tmp_path, capsys):
     env, path, _ = run(tmp_path, capsys, RUNNER_OS="Linux", **CCACHE)
     assert env == {
         "CCACHE_DIR": "/tmp/cc", "CCACHE_BASEDIR": "/work", "CCACHE_MAXSIZE": "1G",
-        "CCACHE_SLOPPINESS": "time_macros", "CCACHE_COMPRESS": "true",
+        "CCACHE_SLOPPINESS": "time_macros", "CCACHE_COMPRESS": "true", "CCACHE_COMPILERCHECK": "content",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache", "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
     }
-    assert path == ["/usr/lib/ccache"]
+    assert path == []
 
 
 def test_ccache_on_macos(tmp_path, capsys):
-    env, path, _ = run(tmp_path, capsys, RUNNER_OS="macOS", **CCACHE)
+    env, path, _ = run(tmp_path, capsys, RUNNER_OS="macOS", WRAPPERS="false", **CCACHE)
     assert env["CMAKE_CXX_COMPILER_LAUNCHER"] == "ccache" and env["CCACHE_DIR"] == "/tmp/cc"
-    assert path == ["/opt/homebrew/opt/ccache/libexec"]
+    assert env["CCACHE_COMPILERCHECK"] == "content"
+    assert path == []
+
+
+@pytest.mark.parametrize("os_name,wrappers", [("Linux", "/usr/lib/ccache"),
+                                              ("macOS", "/opt/homebrew/opt/ccache/libexec")])
+def test_ccache_wrappers_go_on_path_only_when_asked(tmp_path, capsys, os_name, wrappers):
+    _, path, _ = run(tmp_path, capsys, RUNNER_OS=os_name, WRAPPERS="true", **CCACHE)
+    assert path == [wrappers]
 
 
 @pytest.mark.parametrize("os_name", ["Linux", "macOS"])
 def test_ccache_wrappers_can_be_elsewhere(tmp_path, capsys, os_name):
-    _, path, _ = run(tmp_path, capsys, RUNNER_OS=os_name, CCACHE_WRAPPERS="/opt/ccache", **CCACHE)
+    _, path, _ = run(tmp_path, capsys, RUNNER_OS=os_name, WRAPPERS="true", CCACHE_WRAPPERS="/opt/ccache", **CCACHE)
     assert path == ["/opt/ccache"]
 
 
