@@ -5,6 +5,10 @@ name: Container Scan
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the job on one image
+        type: string
+        default: ubuntu-latest
       dockerfile:
         type: string
         default: Dockerfile
@@ -24,7 +28,7 @@ permissions: {}
 jobs:
   scan:
     name: Scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 30
     permissions:
       contents: read

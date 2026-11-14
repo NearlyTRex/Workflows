@@ -2,9 +2,9 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `msvc-uwp` (false), `llvm-version`, `openorbis-version`, `devkitpro`, `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path` | `contents: read` |
+| `cpp-build.yml` | `build-command`, `runs-on` (ubuntu-latest), `container`, `submodules` (false), `fetch-depth` (1), `local-tag`, `apt-packages`, `brew-packages`, `msvc` (false), `msvc-arch` (x64), `msvc-uwp` (false), `llvm-version`, `llvm-on-path` (false), `cmake-version`, `macos-deployment-target`, `openorbis-version`, `devkitpro`, `linux-image`, `cache-paths`, `cache-key-files`, `cache-key`, `rolling-cache-paths`, `ccache` (false), `ccache-max-size` (500M), `ccache-sloppiness` (PCH-friendly), `parallel` (true), `timeout-minutes` (90), `test-command`, `artifact`, `artifact-path`, `os-floors`, `os-floor-paths` (artifact-path) | `contents: read` |
 | `windows-test.yml` | `artifact`, `runs-on` (windows-latest), `page-heap` (true), `timeout` (300), `timeout-minutes` (30) | `contents: read` |
-| `inno-setup.yml` | `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
+| `inno-setup.yml` | `runs-on` (windows-latest), `script`, `version`, `version-define` (AppVersion), `output-dir` (dist), `smoke-test`, `artifact`, `inno-setup-version` (6.7.1) | `contents: read` |
 
 ## `cpp-build`
 
@@ -116,6 +116,45 @@ A release build that stamps `git describe` into the binary should pass `local-ta
 `release-check`'s `tag` output. `release.yml` only tags the commit once the builds are done, so
 otherwise the binary names a bare commit instead of the release. The tag is created in the
 build's checkout only and never pushed.
+
+### Building for older systems
+
+A binary asks for the system that built it: the runner's glibc and libstdc++ on Linux, its macOS
+release on a Mac. When GitHub moves a label such as `ubuntu-latest` to a new image, every release
+built after it stops starting on the older systems, and nothing fails until a player reports it.
+Name a versioned runner, and hold what ships to a floor:
+
+- **`os-floors`** checks every binary in `os-floor-paths` (default `artifact-path`) after the
+  tests and before the upload, and fails the job when one needs more than a floor allows.
+  `.zip` and `.tar` archives (gzip, bzip2 or xz) are opened and checked inside, so the archive a
+  release attaches is what is checked. Floors are `KIND:VERSION`: `glibc:2.35` and any other
+  ELF symbol version prefix such as `glibcxx:3.4.30`, `macos:11.0` for each Mach-O slice's
+  minimum, and `windows:10.0` for a PE's OS and subsystem versions. A floor no binary was
+  checked against fails too, so a path that holds none is caught.
+- **`linux-image: ubuntu-22.04`** runs the job in Ubuntu 22.04 (glibc 2.35), from an image
+  pinned here that has git, with python3 installed for the workflow's own steps. Everything
+  else comes from `apt-packages`, so name a C++ standard library new enough for the compiler,
+  such as `g++-12` for clang 18. `self-tool-versions` says when the image has a newer build.
+- **`llvm-on-path`**, with `llvm-version`, puts that release's unversioned `clang`, `clang++`,
+  `clang-tidy` and `lld` first on `PATH`, for builds and presets that name plain `clang`.
+- **`cmake-version`** installs that CMake release from Kitware, checked against the release's
+  SHA-256 list, first on `PATH`: an old image's CMake is often older than a project's presets.
+- **`macos-deployment-target`** sets `MACOSX_DEPLOYMENT_TARGET`, which clang, CMake and
+  `configure` scripts read. Unset, they target the runner's own macOS.
+
+```yaml
+with:
+  runs-on: ubuntu-24.04
+  linux-image: ubuntu-22.04
+  llvm-version: "18"
+  llvm-on-path: true
+  cmake-version: 3.28.3
+  apt-packages: ninja-build g++-12
+  build-command: ./package.sh
+  artifact: app-linux
+  artifact-path: dist/*.tar.gz
+  os-floors: glibc:2.35 glibcxx:3.4.30
+```
 
 ## `windows-test`
 

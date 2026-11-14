@@ -1,0 +1,12 @@
+name: Check runner labels
+description: >-
+  Fails on an ubuntu-latest, windows-latest or macos-latest label in the repo's
+  workflows, which moves to a new image without a commit. See check_runner_labels.py.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/check_runner_labels.py
+      run: python3 "$SCRIPT"

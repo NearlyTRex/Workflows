@@ -2,8 +2,8 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `scheduled-update.yml` | `command`, `paths`, `commit-message` (Update generated files: {date}), `pr-branch` (scheduled-update/BASE), `assignees`, `node-version`, `timeout-minutes` (60). Outputs `changed`, `pr-url` | `contents: write`, `pull-requests: write` |
-| `license-year.yml` | `path` (LICENSE), `assignees`. Outputs `pr-url` | `contents: write`, `pull-requests: write` |
+| `scheduled-update.yml` | `runs-on` (ubuntu-latest), `command`, `paths`, `commit-message` (Update generated files: {date}), `pr-branch` (scheduled-update/BASE), `assignees`, `node-version`, `timeout-minutes` (60). Outputs `changed`, `pr-url` | `contents: write`, `pull-requests: write` |
+| `license-year.yml` | `runs-on` (ubuntu-latest), `path` (LICENSE), `assignees`. Outputs `pr-url` | `contents: write`, `pull-requests: write` |
 
 ## `scheduled-update`
 

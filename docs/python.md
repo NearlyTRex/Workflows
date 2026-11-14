@@ -2,8 +2,8 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `python-ci.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100), `shell-coverage-source`, `shell-coverage-exclude`, `shell-coverage-fail-under` (100), `shell-coverage-branch` (false), `shell-sandbox` (false) | `contents: read` |
-| `python-build.yml` | `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-build.txt), `artifact-name` (dist) | `contents: read` |
+| `python-ci.yml` | `runs-on` (ubuntu-latest), `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100), `shell-coverage-source`, `shell-coverage-exclude`, `shell-coverage-fail-under` (100), `shell-coverage-branch` (false), `shell-sandbox` (false) | `contents: read` |
+| `python-build.yml` | `runs-on` (ubuntu-latest), `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-build.txt), `artifact-name` (dist) | `contents: read` |
 
 ## `python-ci`
 

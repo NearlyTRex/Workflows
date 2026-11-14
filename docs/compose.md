@@ -2,7 +2,7 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `compose-test.yml` | `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
+| `compose-test.yml` | `runs-on` (ubuntu-latest), `compose-file` (compose.yml), `health-url`, `timeout` (180), `wait` (true), `commands` | `contents: read` |
 
 ## `compose-test`
 

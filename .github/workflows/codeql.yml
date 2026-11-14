@@ -3,6 +3,10 @@ name: CodeQL
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the job on one image
+        type: string
+        default: ubuntu-latest
       languages:
         description: 'JSON list of CodeQL languages, e.g. ["python", "actions"] or ["c-cpp"]'
         type: string
@@ -21,7 +25,7 @@ permissions: {}
 jobs:
   analyze:
     name: Analyze ${{ matrix.language }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 60
     permissions:
       actions: read

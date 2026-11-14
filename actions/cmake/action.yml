@@ -1,0 +1,18 @@
+name: CMake
+description: >-
+  Installs a CMake release from Kitware's GitHub releases, checked against the
+  release's SHA-256 list, first on PATH. See install_cmake.py.
+
+inputs:
+  version:
+    description: The CMake release, e.g. 3.28.3
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/install_cmake.py
+        CMAKE_VERSION: ${{ inputs.version }}
+      run: python3 "$SCRIPT"

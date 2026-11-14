@@ -2,16 +2,17 @@
 
 Dependabot has no Chocolatey ecosystem, so the Inno Setup version inno-setup.yml
 installs would go stale silently, as would the OpenOrbis release actions/openorbis
-pins by sha256 and the devkitPro images cpp-build.yml pins by digest inside an
-expression. This compares them with the newest stable Inno Setup on the
-Chocolatey community feed, the latest OpenOrbis release on GitHub and the newest
-dated devkitPro tags on Docker Hub, and fails when a newer one is out, so the
-weekly run says so.
+pins by sha256 and the devkitPro and linux-image images cpp-build.yml pins by
+digest inside an expression. This compares them with the newest stable Inno Setup
+on the Chocolatey community feed, the latest OpenOrbis release on GitHub, the
+newest dated devkitPro tags on Docker Hub and the buildpack-deps tags' current
+builds, and fails when a newer one is out, so the weekly run says so.
 
 Usage:
     check_tool_versions.py
 """
 
+import datetime
 import json
 import re
 import sys
@@ -28,6 +29,11 @@ CPP_BUILD_WORKFLOW = ROOT / ".github" / "workflows" / "cpp-build.yml"
 DEVKITPRO_TAGS = "https://hub.docker.com/v2/repositories/devkitpro/{image}/tags?page_size=100&ordering=last_updated"
 # devkitPro tags each image build with its date, and moves latest along.
 DEVKITPRO_IMAGE = re.compile(r"devkitpro/([\w-]+):(\d{8})@sha256:[0-9a-f]{64}")
+# linux-image's images are buildpack-deps tags, which Docker rebuilds in place
+# for each security update; a rebuild counts once it is as old as Dependabot's cooldown.
+LINUX_IMAGE = re.compile(r'"([\w.-]+)":"buildpack-deps:([\w.-]+)@(sha256:[0-9a-f]{64})"')
+BUILDPACK_TAG = "https://hub.docker.com/v2/repositories/library/buildpack-deps/tags/{tag}"
+SETTLE = datetime.timedelta(days=7)
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 DATA = "{http://schemas.microsoft.com/ado/2007/08/dataservices}"
@@ -93,7 +99,33 @@ def latest_devkitpro(image, get=fetch):
     return newest["name"], newest["digest"]
 
 
-def main(get=fetch, workflow=INNO_WORKFLOW, openorbis=OPENORBIS_SCRIPT, cpp_build=CPP_BUILD_WORKFLOW):
+def pinned_linux_images(workflow=CPP_BUILD_WORKFLOW):
+    """Each linux-image name cpp-build.yml maps, with its buildpack-deps tag and digest."""
+    return LINUX_IMAGE.findall(workflow.read_text())
+
+
+def latest_buildpack(tag, get=fetch):
+    """The digest buildpack-deps:tag has on Docker Hub now, and when it was built."""
+    found = json.loads(get(BUILDPACK_TAG.format(tag=tag)))
+    return found["digest"], datetime.datetime.fromisoformat(found["last_updated"].replace("Z", "+00:00"))
+
+
+def check_linux_images(cpp_build, get, now):
+    """A line per linux-image, and whether any has a rebuild older than SETTLE to move to."""
+    lines, stale = [], False
+    for name, tag, digest in pinned_linux_images(cpp_build):
+        newest, built = latest_buildpack(tag, get)
+        if newest != digest and now - built >= SETTLE:
+            lines.append(f"::error file={cpp_build.relative_to(ROOT)}::buildpack-deps:{tag} was rebuilt on "
+                         f"{built:%Y-%m-%d}. Move cpp-build.yml's linux-image {name} to "
+                         f"buildpack-deps:{tag}@{newest}.")
+            stale = True
+        else:
+            lines.append(f"linux-image {name} (buildpack-deps:{tag}) is current")
+    return lines, stale
+
+
+def main(get=fetch, workflow=INNO_WORKFLOW, openorbis=OPENORBIS_SCRIPT, cpp_build=CPP_BUILD_WORKFLOW, now=None):
     """Compare each pin with the newest release; 1 when any is behind."""
     checks = [("Inno Setup", pinned(workflow), latest_stable(get), workflow,
                "Update inno-setup.yml's inno-setup-version default."),
@@ -110,7 +142,10 @@ def main(get=fetch, workflow=INNO_WORKFLOW, openorbis=OPENORBIS_SCRIPT, cpp_buil
             status = 1
         else:
             print(f"{name} {current} is the newest")
-    return status
+    lines, stale = check_linux_images(cpp_build, get, now or datetime.datetime.now(datetime.timezone.utc))
+    for line in lines:
+        print(line)
+    return 1 if stale else status
 
 if __name__ == "__main__":
     sys.exit(main())

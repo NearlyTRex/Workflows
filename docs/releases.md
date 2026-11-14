@@ -2,10 +2,10 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `prepare-release.yml` | `bump`, `version-file`, `tag-prefix` (v) | `contents: write`, `pull-requests: write` |
-| `release-check.yml` | `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
-| `release.yml` | `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file`, `dry-run` (false) | `contents: write` |
-| `attest.yml` | `artifacts` | `id-token: write`, `attestations: write` |
+| `prepare-release.yml` | `runs-on` (ubuntu-latest), `bump`, `version-file`, `tag-prefix` (v) | `contents: write`, `pull-requests: write` |
+| `release-check.yml` | `runs-on` (ubuntu-latest), `version-file`, `tag-prefix` (v). Outputs `version`, `tag`, `pending` | `contents: read` |
+| `release.yml` | `runs-on` (ubuntu-latest), `version-file`, `tag-prefix` (v), `title`, `draft` (false), `assets`, `checksums` (false), `notes-file`, `dry-run` (false) | `contents: write` |
+| `attest.yml` | `runs-on` (ubuntu-latest), `artifacts` | `id-token: write`, `attestations: write` |
 
 The version file is the only place a version is written: `pyproject.toml`, `package.json`,
 `CMakeLists.txt` (`project(... VERSION x.y.z)`), or a plain `VERSION` file.

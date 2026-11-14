@@ -2,10 +2,10 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `security.yml` | `zizmor` (true), `gitleaks` (true), `pip-audit-files`, `tracked-files` (true), `tracked-files-patterns` | `contents: read` |
-| `codeql.yml` | `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
-| `dependency-review.yml` | `fail-on-severity` (moderate) | `contents: read` |
-| `container-scan.yml` | `dockerfile` (Dockerfile), `context` (.), `severity` (HIGH,CRITICAL), `config-scan` (false) | `contents: read` |
+| `security.yml` | `runs-on` (ubuntu-latest), `zizmor` (true), `gitleaks` (true), `pip-audit-files`, `tracked-files` (true), `tracked-files-patterns` | `contents: read` |
+| `codeql.yml` | `runs-on` (ubuntu-latest), `languages` (["actions"]), `build-mode` (none), `build-command` | `actions: read`, `contents: read`, `security-events: write` |
+| `dependency-review.yml` | `runs-on` (ubuntu-latest), `fail-on-severity` (moderate) | `contents: read` |
+| `container-scan.yml` | `runs-on` (ubuntu-latest), `dockerfile` (Dockerfile), `context` (.), `severity` (HIGH,CRITICAL), `config-scan` (false) | `contents: read` |
 
 ## `security`
 

@@ -1,0 +1,26 @@
+name: OS floor
+description: >-
+  Fails when a binary needs a newer system than the floors allow: glibc and other
+  ELF symbol versions, the minimum macOS, the Windows version. Opens archives. See
+  check_os_floor.py.
+
+inputs:
+  floors:
+    description: Space-separated KIND:VERSION floors, e.g. glibc:2.35 glibcxx:3.4.30
+    required: true
+  paths:
+    description: Newline-separated paths or globs to binaries, directories or archives
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/check_os_floor.py
+        OS_FLOORS: ${{ inputs.floors }}
+        OS_FLOOR_PATHS: ${{ inputs.paths }}
+      # The runner's own Python. On Windows python3 can be the Microsoft Store stub.
+      run: |
+        if [ "$RUNNER_OS" = Windows ]; then python="python"; else python="python3"; fi
+        "$python" "$SCRIPT"

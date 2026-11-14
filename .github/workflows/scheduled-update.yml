@@ -8,6 +8,10 @@ name: Scheduled Update
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the jobs on one image
+        type: string
+        default: ubuntu-latest
       command:
         description: Regenerates the files, run with bash from the repo root
         type: string
@@ -52,7 +56,7 @@ permissions: {}
 jobs:
   generate:
     name: Generate
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
@@ -90,7 +94,7 @@ jobs:
     name: Pull request
     needs: generate
     if: needs.generate.outputs.changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
     permissions:
       contents: write

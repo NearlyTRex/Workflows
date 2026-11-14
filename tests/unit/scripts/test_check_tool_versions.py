@@ -1,4 +1,5 @@
 
+import datetime
 import json
 
 import pytest
@@ -111,6 +112,52 @@ def test_newer_devkitpro_image_fails_with_its_digest(tmp_path, monkeypatch, caps
                       openorbis_pinning(tmp_path, "0.5.4"), cpp_build_pinning(tmp_path, "20251231")) == 1
     assert ("devkitpro/devkita64 20260219 is out; 20251231 is pinned. Move cpp-build.yml's devkitpro image "
             f"to devkitpro/devkita64:20260219@sha256:{'c' * 64}.") in capsys.readouterr().out
+
+
+NOW = datetime.datetime(2026, 11, 20, tzinfo=datetime.timezone.utc)
+
+
+def linux_image_pinning(tmp_path, digest):
+    workflow = cpp_build_pinning(tmp_path, "20260219")
+    workflow.write_text(workflow.read_text() + "container: ${{ fromJSON('{\"ubuntu-22.04\":\"buildpack-deps:"
+                        f"jammy-scm@sha256:{digest}\"}}')[inputs.linux-image] }}}}\n")
+    return workflow
+
+
+def buildpack_pages(digest, built):
+    return {**PAGES, tools.BUILDPACK_TAG.format(tag="jammy-scm"): json.dumps(
+        {"digest": f"sha256:{digest}", "last_updated": built}).encode()}
+
+
+def test_pinned_linux_images_reads_the_real_workflow():
+    assert [(name, tag) for name, tag, _ in tools.pinned_linux_images()] == [("ubuntu-22.04", "jammy-scm")]
+
+
+@pytest.mark.parametrize("pinned, built", [("d" * 64, "2026-11-01T00:00:00.000000Z"),
+                                           ("a" * 64, "2026-11-18T06:19:49.717682Z")])
+def test_a_current_or_freshly_rebuilt_image_passes(tmp_path, monkeypatch, capsys, pinned, built):
+    monkeypatch.setattr(tools, "ROOT", tmp_path)
+    pages = buildpack_pages("d" * 64, built)
+    assert tools.main(pages.__getitem__, workflow_pinning(tmp_path, "6.10.0"), openorbis_pinning(tmp_path, "0.5.4"),
+                      linux_image_pinning(tmp_path, pinned), now=NOW) == 0
+    assert "linux-image ubuntu-22.04 (buildpack-deps:jammy-scm) is current" in capsys.readouterr().out
+
+
+def test_a_rebuild_older_than_the_cooldown_fails_with_its_digest(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tools, "ROOT", tmp_path)
+    pages = buildpack_pages("d" * 64, "2026-11-12T06:19:49.717682Z")
+    assert tools.main(pages.__getitem__, workflow_pinning(tmp_path, "6.10.0"), openorbis_pinning(tmp_path, "0.5.4"),
+                      linux_image_pinning(tmp_path, "a" * 64), now=NOW) == 1
+    assert ("::error file=cpp-build.yml::buildpack-deps:jammy-scm was rebuilt on 2026-11-12. Move cpp-build.yml's "
+            f"linux-image ubuntu-22.04 to buildpack-deps:jammy-scm@sha256:{'d' * 64}.") in capsys.readouterr().out
+
+
+def test_now_defaults_to_the_clock(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tools, "ROOT", tmp_path)
+    pages = buildpack_pages("a" * 64, "2026-11-12T06:19:49.717682Z")
+    assert tools.main(pages.__getitem__, workflow_pinning(tmp_path, "6.10.0"), openorbis_pinning(tmp_path, "0.5.4"),
+                      linux_image_pinning(tmp_path, "a" * 64)) == 0
+    assert "is current" in capsys.readouterr().out
 
 
 def test_fetch_reads_the_url(monkeypatch):

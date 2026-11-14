@@ -5,6 +5,10 @@ name: Prepare Release
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the job on one image
+        type: string
+        default: ubuntu-latest
       bump:
         description: patch, minor, major or X.Y.Z
         type: string
@@ -25,7 +29,7 @@ permissions: {}
 jobs:
   prepare:
     name: Prepare
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
     permissions:
       contents: write
