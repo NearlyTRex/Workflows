@@ -9,7 +9,7 @@ from script_helpers import ROOT, load_script
 
 ci_cpp_coverage = load_script("actions/build-env/ci_cpp_coverage.py")
 
-pytestmark = pytest.mark.requires_binary("clang++", "llvm-cov", "llvm-profdata")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("clang++", "llvm-cov", "llvm-profdata")]
 
 INSTRUMENT = ["-fprofile-instr-generate", "-fcoverage-mapping"]
 

@@ -4,7 +4,7 @@ import pytest
 
 from script_helpers import load_script
 
-pytestmark = pytest.mark.requires_binary("git")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git")]
 
 check = load_script("actions/check-tracked-files/check_tracked_files.py")
 

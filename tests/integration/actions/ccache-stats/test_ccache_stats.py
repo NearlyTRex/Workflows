@@ -12,7 +12,7 @@ SCRIPT = ROOT / "actions" / "ccache-stats" / "ccache_stats.py"
 ccache_stats = load_script("actions/ccache-stats/ccache_stats.py")
 
 # The fake ccache is a shell script
-pytestmark = pytest.mark.requires_binary("sh")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("sh")]
 
 
 def run(tmp_path, monkeypatch, capfd, print_stats, maxsize=None):

@@ -4,4 +4,4 @@ pytest
 pyyaml
 clang-format
 # The meta suite these tests are held to
-pytest-testrex>=0.1.2
+pytest-testrex>=0.1.7

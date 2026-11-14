@@ -3,7 +3,7 @@ import pytest
 from script_helpers import load_script
 from git_helpers import repo_with
 
-pytestmark = pytest.mark.requires_binary("git")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git")]
 
 check_toml = load_script("actions/check-toml/check_toml.py")
 

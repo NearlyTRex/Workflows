@@ -805,7 +805,7 @@ def report_community_files(written, kept, dry_run=False):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("target")
     parser.add_argument("--stack", choices=["python", "cpp", "shell", "data"])
     parser.add_argument("--version-file", help="File holding the version (default: detected)")
