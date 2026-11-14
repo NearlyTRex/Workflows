@@ -7,6 +7,10 @@ name: Inno Setup
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The Windows runner label; a versioned one, such as windows-2025, keeps the job on one image
+        type: string
+        default: windows-latest
       script:
         description: The .iss script to compile
         type: string
@@ -41,8 +45,13 @@ permissions: {}
 jobs:
   build:
     name: Build
-    runs-on: windows-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 30
+    # The scripts are PowerShell, Windows' default shell. Named, since with
+    # runs-on an input actionlint can't tell the runner is Windows.
+    defaults:
+      run:
+        shell: pwsh
     permissions:
       contents: read
     steps:

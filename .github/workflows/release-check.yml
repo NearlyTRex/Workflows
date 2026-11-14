@@ -10,6 +10,10 @@ name: Release Check
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the job on one image
+        type: string
+        default: ubuntu-latest
       version-file:
         type: string
         required: true
@@ -32,7 +36,7 @@ permissions: {}
 jobs:
   check:
     name: Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 5
     permissions:
       contents: read

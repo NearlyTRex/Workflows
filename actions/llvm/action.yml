@@ -8,6 +8,10 @@ inputs:
   version:
     description: The LLVM release, e.g. 23
     required: true
+  on-path:
+    description: Put the release's unversioned tools (clang, clang-tidy, lld) first on PATH
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -16,4 +20,5 @@ runs:
       env:
         SCRIPT: ${{ github.action_path }}/install_llvm.py
         LLVM_VERSION: ${{ inputs.version }}
+        LLVM_ON_PATH: ${{ inputs.on-path }}
       run: python3 "$SCRIPT"

@@ -1,12 +1,15 @@
 """Install an LLVM release from apt.llvm.org beside the runner's own clang.
 
-Reads LLVM_VERSION from the environment; for Ubuntu and Debian runners.
+Reads LLVM_VERSION, LLVM_ON_PATH and GITHUB_PATH from the environment; for Ubuntu and
+Debian runners.
 
-LLVM_VERSION=N  add LLVM's signed repository for release N and the runner's distribution
-                release, then install clang-N and its tools (clang-format-N, clang-tidy-N,
-                clang-tools-N, lld-N, and llvm-N with llvm-cov and llvm-profdata), the
-                profiling runtime and libc++. Every package carries the version, so the
-                distribution's clang stays the default and callers name clang++-N.
+LLVM_VERSION=N     add LLVM's signed repository for release N and the runner's distribution
+                   release, then install clang-N and its tools (clang-format-N, clang-tidy-N,
+                   clang-tools-N, lld-N, and llvm-N with llvm-cov and llvm-profdata), the
+                   profiling runtime and libc++. Every package carries the version, so the
+                   distribution's clang stays the default and callers name clang++-N.
+LLVM_ON_PATH=true  also put /usr/lib/llvm-N/bin first on PATH for later steps, so the
+                   unversioned clang, clang-tidy and lld are release N's.
 """
 
 import os
@@ -72,6 +75,10 @@ def main(env=None, run=subprocess.run, download=fetch, os_release=Path("/etc/os-
     run([*sudo, "apt-get", "update"], check=True)
     run([*sudo, "apt-get", "install", "-y", "--no-install-recommends", *packages(version)], check=True)
     print(f"LLVM {version} for {release}: clang++-{version}, clang-tidy-{version}, libc++")
+    if env.get("LLVM_ON_PATH") == "true":
+        with open(env["GITHUB_PATH"], "a", encoding="utf-8") as path_file:
+            path_file.write(f"/usr/lib/llvm-{version}/bin\n")
+        print(f"/usr/lib/llvm-{version}/bin is first on PATH")
     return 0
 
 

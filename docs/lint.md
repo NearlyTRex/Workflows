@@ -2,7 +2,7 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `lint.yml` | `shellcheck` (true), `markdown` (true), `json` (true), `toml` (true), `yaml` (true), `actionlint` (true), `powershell` (true), `clang-format` (true) | `contents: read` |
+| `lint.yml` | `runs-on` (ubuntu-latest), `shellcheck` (true), `markdown` (true), `json` (true), `toml` (true), `yaml` (true), `actionlint` (true), `powershell` (true), `clang-format` (true), `pinned-runners` (false) | `contents: read` |
 
 ## `lint`
 
@@ -23,6 +23,10 @@ rules. Each check is skipped when there's nothing to check.
   duplicate keys and trailing spaces.
 - **actionlint:** checks the workflows for expression typos, bad inputs, unknown runner labels
   and YAML mistakes, and shellchecks their `run:` scripts.
+- **Pinned runners:** with `pinned-runners`, fails on `ubuntu-latest`, `windows-latest` or
+  `macos-latest` anywhere in the repo's workflows outside comments, matrix lists and expressions
+  included. GitHub moves those labels to a new image without a commit, and a build moves with
+  them. Every reusable workflow here takes `runs-on`, so a caller can name a version for each.
 - **PowerShell:** runs
   [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) over every tracked `*.ps1`,
   `*.psm1` and `*.psd1` file, such as an installer smoke test. With the repo's

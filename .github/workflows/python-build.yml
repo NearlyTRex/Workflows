@@ -5,6 +5,10 @@ name: Python Build
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the job on one image
+        type: string
+        default: ubuntu-latest
       python-version:
         type: string
         default: "3.12"
@@ -24,7 +28,7 @@ permissions: {}
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
     permissions:
       contents: read

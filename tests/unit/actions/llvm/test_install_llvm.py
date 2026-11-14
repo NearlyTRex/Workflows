@@ -27,7 +27,7 @@ class Recorder:
                 self.installed[target] = staged.read()
 
 
-def run(tmp_path, monkeypatch, version="23", os_release=NOBLE, euid=1001):
+def run(tmp_path, monkeypatch, version="23", os_release=NOBLE, euid=1001, extra_env=None):
     release = tmp_path / "os-release"
     release.write_text(os_release, encoding="utf-8")
     monkeypatch.setattr(os, "geteuid", lambda: euid)
@@ -38,9 +38,24 @@ def run(tmp_path, monkeypatch, version="23", os_release=NOBLE, euid=1001):
         downloads.append(url)
         return b"-----BEGIN PGP PUBLIC KEY BLOCK-----\n"
 
-    status = install_llvm.main({"LLVM_VERSION": version}, run=recorder, download=download,
-                               os_release=release)
+    status = install_llvm.main({"LLVM_VERSION": version, **(extra_env or {})}, run=recorder,
+                               download=download, os_release=release)
     return status, recorder, downloads
+
+
+def test_on_path_puts_the_release_bin_first_for_later_steps(tmp_path, monkeypatch, capsys):
+    github_path = tmp_path / "github_path"
+    github_path.write_text("/earlier\n", encoding="utf-8")
+    status, _, _ = run(tmp_path, monkeypatch, extra_env={"LLVM_ON_PATH": "true", "GITHUB_PATH": str(github_path)})
+    assert status == 0
+    assert github_path.read_text(encoding="utf-8") == "/earlier\n/usr/lib/llvm-23/bin\n"
+    assert "/usr/lib/llvm-23/bin is first on PATH" in capsys.readouterr().out
+
+
+def test_without_on_path_nothing_is_added_to_path(tmp_path, monkeypatch, capsys):
+    run(tmp_path, monkeypatch, extra_env={"LLVM_ON_PATH": "false", "GITHUB_PATH": str(tmp_path / "unused")})
+    assert not (tmp_path / "unused").exists()
+    assert "first on PATH" not in capsys.readouterr().out
 
 
 def test_adds_the_signed_repository_for_the_release_and_version(tmp_path, monkeypatch, capsys):

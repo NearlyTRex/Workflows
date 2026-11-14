@@ -9,6 +9,10 @@ name: Lint
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the job on one image
+        type: string
+        default: ubuntu-latest
       shellcheck:
         type: boolean
         default: true
@@ -44,13 +48,19 @@ on:
         description: Check the workflows with actionlint, including a shellcheck of their scripts
         type: boolean
         default: true
+      pinned-runners:
+        description: >-
+          Fail on an ubuntu-latest, windows-latest or macos-latest label in the repo's workflows:
+          GitHub moves those to a new image without a commit, and what a job builds with them
+        type: boolean
+        default: false
 
 permissions: {}
 
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -99,6 +109,10 @@ jobs:
       - name: Workflows
         if: inputs.actionlint
         uses: $/actions/actionlint
+
+      - name: Runner labels
+        if: inputs.pinned-runners
+        uses: $/actions/check-runner-labels
 
       - name: PowerShell
         if: inputs.powershell

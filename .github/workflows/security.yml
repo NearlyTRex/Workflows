@@ -6,6 +6,10 @@ name: Security
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the jobs on one image
+        type: string
+        default: ubuntu-latest
       zizmor:
         type: boolean
         default: true
@@ -31,7 +35,7 @@ jobs:
   zizmor:
     name: Zizmor
     if: inputs.zizmor
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -44,7 +48,7 @@ jobs:
   gitleaks:
     name: Gitleaks
     if: inputs.gitleaks
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     # A full scan of a large history takes several minutes.
     timeout-minutes: 30
     permissions:
@@ -67,7 +71,7 @@ jobs:
   pip-audit:
     name: Pip Audit
     if: inputs.pip-audit-files != ''
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -96,7 +100,7 @@ jobs:
   tracked-files:
     name: Tracked Files
     if: inputs.tracked-files
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 5
     permissions:
       contents: read

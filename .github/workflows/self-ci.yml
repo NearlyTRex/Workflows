@@ -142,6 +142,55 @@ jobs:
         fi
       artifact: fixture-cpp-${{ matrix.os }}
       artifact-path: build/fixture_test*
+      # The Windows leg's exe against the oldest Windows it should run on.
+      os-floors: ${{ matrix.os == 'windows-latest' && 'windows:10.0' || '' }}
+
+  # The fixture built for an old glibc: in linux-image's Ubuntu 22.04, with a
+  # newer LLVM first on PATH and a newer CMake than the image's, then packaged
+  # and held to glibc 2.35 from inside the archive.
+  cpp-old-glibc:
+    name: C++ (Ubuntu 22.04 image)
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    with:
+      runs-on: ubuntu-24.04
+      linux-image: ubuntu-22.04
+      llvm-version: "18"
+      llvm-on-path: true
+      cmake-version: 3.28.3
+      apt-packages: ninja-build g++-12
+      ccache: true
+      cache-key: fixture-cpp-old-glibc
+      build-command: |
+        test "$(cmake --version | head -n 1)" = "cmake version 3.28.3"
+        clang++ --version | grep -q "clang version 18"
+        ci-phase Configure cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
+        ci-phase Build cmake --build build
+      test-command: |
+        ci-phase Test ctest --test-dir build --output-on-failure
+        tar -czf build/fixture.tar.gz -C build fixture_test
+      os-floors: glibc:2.35
+      os-floor-paths: build/fixture.tar.gz
+
+  # The fixture built for macOS 11 on a newer runner, by the deployment target
+  # alone, with CMake from Kitware's universal archive.
+  cpp-macos-floor:
+    name: C++ (macOS deployment target)
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    with:
+      runs-on: macos-15
+      macos-deployment-target: "11.0"
+      cmake-version: 3.28.3
+      build-command: |
+        test "$(cmake --version | head -n 1)" = "cmake version 3.28.3"
+        ci-phase Configure cmake -S tests/fixtures/cpp-app -B build
+        ci-phase Build cmake --build build
+      test-command: ci-phase Test ctest --test-dir build --output-on-failure
+      os-floors: macos:11.0
+      os-floor-paths: build/fixture_test
 
   # The PS4 fixture cross-built with the OpenOrbis SDK, made into eboot.bin and
   # a .prx, and packaged and validated with the SDK's own tools, so the toolchain
@@ -152,6 +201,9 @@ jobs:
     permissions:
       contents: read
     with:
+      # OpenOrbis 0.5.4 is built with LLVM 18, which apt.llvm.org has no
+      # packages of for 26.04, the image ubuntu-latest moved to.
+      runs-on: ubuntu-24.04
       openorbis-version: 0.5.4
       build-command: |
         ci-phase Configure cmake -S tests/fixtures/ps4-app -B build -G Ninja \

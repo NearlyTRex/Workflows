@@ -7,6 +7,10 @@ name: Compose Test
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: The runner label; a versioned one, such as ubuntu-24.04, keeps the job on one image
+        type: string
+        default: ubuntu-latest
       compose-file:
         type: string
         default: compose.yml
@@ -35,7 +39,7 @@ permissions: {}
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 30
     permissions:
       contents: read

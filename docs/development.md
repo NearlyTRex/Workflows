@@ -26,6 +26,9 @@ so one pin fixes the whole chain. The actions are:
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
 | `llvm` | An LLVM release from apt.llvm.org beside the runner's clang, for `cpp-build`'s `llvm-version` |
 | `openorbis` | A pinned OpenOrbis PS4 Toolchain release, its LLVM and its CMake toolchain and helpers, for `cpp-build`'s `openorbis-version` |
+| `cmake` | A CMake release from Kitware, checked against the release's SHA-256 list, first on `PATH`, for `cpp-build`'s `cmake-version` |
+| `os-floor` | Fails when a binary, or one inside an archive, needs a newer glibc, macOS or Windows than its floor, for `cpp-build`'s `os-floors` |
+| `check-runner-labels` | Fails on a `-latest` runner label in the repo's workflows, for `lint`'s `pinned-runners` |
 | `build-env` | Parallel jobs, ccache, and `ci-phase`, `ci-clang-tidy`, `ci-cpp-coverage` and `ci-msix` on `PATH` for `cpp-build` |
 | `ccache-stats` | Prints ccache's statistics and warns when `ccache-max-size` was too small |
 | `windows-test` | Runs a folder of test programs on Windows under full page heap, and a failing one again under cdb, for `windows-test` |
@@ -97,8 +100,10 @@ The shell coverage and sandbox plugins, and their corpus and shfmt cross-check, 
 [TestRex](https://github.com/NearlyTRex/TestRex).
 
 Dependabot has no Chocolatey ecosystem, and can't see the OpenOrbis release `actions/openorbis`
-pins or the devkitPro images `cpp-build.yml` names inside an expression, so `self-tool-versions.yml`
-checks all three every week, and fails with the version to move to when a newer one is out.
+pins or the devkitPro and `linux-image` images `cpp-build.yml` names inside an expression, so
+`self-tool-versions.yml` checks them every week, and fails with the version or digest to move to
+when a newer one is out. A `linux-image` tag is rebuilt in place, so its new digest counts once
+it is 7 days old, as Dependabot's cooldown does.
 
 actionlint doesn't understand `$/` yet, so the `actionlint` action leaves those uses out; zizmor
 does understand it.

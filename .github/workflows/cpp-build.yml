@@ -31,6 +31,13 @@ on:
           with container
         type: string
         default: ""
+      linux-image:
+        description: >-
+          An older distribution to build in, from an image pinned here, so the binaries run on
+          its glibc and newer: ubuntu-22.04 (glibc 2.35). The image has git, and python3 is
+          installed first; apt-packages adds the rest. Not with container or devkitpro
+        type: string
+        default: ""
       submodules:
         description: false, true or recursive
         type: string
@@ -73,6 +80,26 @@ on:
         description: >-
           An LLVM release to install from apt.llvm.org beside the runner's clang, e.g. 23:
           clang-N, clang-tidy-N, clang-format-N, lld-N, llvm-N and libc++; Linux runners only
+        type: string
+        default: ""
+      llvm-on-path:
+        description: >-
+          With llvm-version, put that release's unversioned clang, clang++, clang-tidy and lld
+          first on PATH, so a build that names plain clang gets it
+        type: boolean
+        default: false
+      cmake-version:
+        description: >-
+          A CMake release to install from Kitware, checked against the release's SHA-256 list,
+          first on PATH, e.g. 3.28.3: for an image whose CMake is older than the project needs.
+          Linux and macOS runners
+        type: string
+        default: ""
+      macos-deployment-target:
+        description: >-
+          The oldest macOS the binaries run on, e.g. 11.0, as MACOSX_DEPLOYMENT_TARGET, which
+          clang, CMake and configure scripts all read. Unset, they target the runner's own
+          macOS. macOS runners only
         type: string
         default: ""
       openorbis-version:
@@ -138,6 +165,18 @@ on:
         description: Newline-separated paths or globs to upload
         type: string
         default: ""
+      os-floors:
+        description: >-
+          The oldest system the binaries may need, as space-separated KIND:VERSION floors:
+          glibc:2.35, glibcxx:3.4.30 (any ELF symbol version prefix), macos:11.0, windows:10.0.
+          After the build and tests, every binary in os-floor-paths is checked, archives
+          included, and the job fails if one needs more. See actions/os-floor
+        type: string
+        default: ""
+      os-floor-paths:
+        description: Newline-separated paths or globs for os-floors to check; defaults to artifact-path
+        type: string
+        default: ""
       parallel:
         description: >-
           Build on every core: sets CMAKE_BUILD_PARALLEL_LEVEL, and MAKEFLAGS=-j off Windows,
@@ -158,8 +197,9 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     # An empty string is not a valid container, so no image means null. The
     # caller's image is pinned by digest by the caller, as with any other input;
-    # devkitpro's are pinned here, and self-tool-versions says when one is out.
-    container: ${{ inputs.container || fromJSON('{"switch":"devkitpro/devkita64:20260219@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282"}')[inputs.devkitpro] || null }} # zizmor: ignore[unpinned-images]
+    # devkitpro's and linux-image's are pinned here, and self-tool-versions says
+    # when one is out.
+    container: ${{ inputs.container || fromJSON('{"switch":"devkitpro/devkita64:20260219@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282"}')[inputs.devkitpro] || fromJSON('{"ubuntu-22.04":"buildpack-deps:jammy-scm@sha256:df585dbc053532fe21188e1716ea52d00ee33d7cca89761b542d74352a74aed1"}')[inputs.linux-image] || null }} # zizmor: ignore[unpinned-images]
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
@@ -181,6 +221,23 @@ jobs:
           fi
           echo "devkitPro $PLATFORM in $DEVKITPRO"
 
+      # As devkitpro: an unknown name would otherwise build on the runner.
+      - name: Check linux-image
+        if: inputs.linux-image != ''
+        shell: bash
+        env:
+          IMAGE: ${{ inputs.linux-image }}
+          CONTAINER: ${{ inputs.container }}
+          DEVKITPRO: ${{ inputs.devkitpro }}
+        run: |
+          if [ "$IMAGE" != ubuntu-22.04 ]; then
+            echo "::error::linux-image must be ubuntu-22.04, not '$IMAGE'"; exit 1
+          fi
+          if [ -n "$CONTAINER$DEVKITPRO" ]; then
+            echo "::error::linux-image picks the job's image, so it can't be given with container or devkitpro"; exit 1
+          fi
+          getconf GNU_LIBC_VERSION
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -198,14 +255,17 @@ jobs:
         run: git tag -f "$TAG" && git describe --tags --always
 
       # Skipped off Linux, so a matrix can pass one package list to every runner.
-      # A container job usually runs as root, without sudo.
+      # A container job usually runs as root, without sudo. A linux-image has no
+      # python3, which the later steps' scripts run on.
       - name: Install packages
-        if: inputs.apt-packages != '' && runner.os == 'Linux'
+        if: (inputs.apt-packages != '' || inputs.linux-image != '') && runner.os == 'Linux'
         shell: bash
         env:
           PACKAGES: ${{ inputs.apt-packages }}
+          IMAGE: ${{ inputs.linux-image }}
         run: |
           read -ra packages <<< "$PACKAGES"
+          if [ -n "$IMAGE" ]; then packages+=(python3); fi
           sudo=""; if [ "$(id -u)" != 0 ]; then sudo="sudo"; fi
           $sudo apt-get update
           $sudo apt-get install -y --no-install-recommends "${packages[@]}"
@@ -256,6 +316,20 @@ jobs:
         uses: $/actions/llvm
         with:
           version: ${{ inputs.llvm-version }}
+          on-path: ${{ inputs.llvm-on-path }}
+
+      - name: Install CMake
+        if: inputs.cmake-version != '' && runner.os != 'Windows'
+        uses: $/actions/cmake
+        with:
+          version: ${{ inputs.cmake-version }}
+
+      - name: macOS deployment target
+        if: inputs.macos-deployment-target != '' && runner.os == 'macOS'
+        shell: bash
+        env:
+          TARGET: ${{ inputs.macos-deployment-target }}
+        run: echo "MACOSX_DEPLOYMENT_TARGET=$TARGET" >> "$GITHUB_ENV"
 
       # A pinned SDK release, checked against its sha256: see actions/openorbis.
       - name: Install OpenOrbis
@@ -349,6 +423,15 @@ jobs:
         with:
           path: ${{ inputs.rolling-cache-paths }}
           key: rolling-${{ runner.os }}-${{ inputs.cache-key || inputs.artifact }}@${{ github.run_id }}-${{ github.run_attempt }}
+
+      # Before the upload, so a binary that needs a newer system than it
+      # promises never reaches a release.
+      - name: Check OS floors
+        if: inputs.os-floors != ''
+        uses: $/actions/os-floor
+        with:
+          floors: ${{ inputs.os-floors }}
+          paths: ${{ inputs.os-floor-paths || inputs.artifact-path }}
 
       - if: inputs.artifact != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
