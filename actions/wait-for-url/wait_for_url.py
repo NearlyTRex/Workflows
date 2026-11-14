@@ -16,11 +16,15 @@ ATTEMPT_SECONDS = 10
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A handler that leaves redirects unfollowed, so they surface as HTTPError."""
+
     def redirect_request(self, *_args, **_kwargs):
+        """None, which declines every redirect."""
         return None
 
 
 def answers(url, opener):
+    """Whether url gives a response below 400 within one attempt."""
     try:
         with opener.open(url, timeout=ATTEMPT_SECONDS):
             return True
@@ -31,6 +35,7 @@ def answers(url, opener):
 
 
 def main(env=None, clock=time.monotonic, sleep=time.sleep):
+    """Poll URL once a second until it answers (0) or TIMEOUT runs out (1)."""
     env = os.environ if env is None else env
     url, timeout = env["URL"], int(env["TIMEOUT"])
     opener = urllib.request.build_opener(NoRedirect)

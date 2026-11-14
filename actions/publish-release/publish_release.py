@@ -21,15 +21,18 @@ from pathlib import Path
 
 
 def render_notes(template, version, tag, repo):
+    """The notes template with {version}, {tag} and {repository} filled in."""
     return template.replace("{version}", version).replace("{tag}", tag).replace("{repository}", repo)
 
 
 def find_assets(directory):
+    """Every file under directory, sorted; none when it isn't a directory."""
     directory = Path(directory)
     return sorted(p for p in directory.rglob("*") if p.is_file()) if directory.is_dir() else []
 
 
 def checksums(directory, assets):
+    """SHA256SUMS text for assets, one sha256sum-style line each, paths relative to directory."""
     lines = []
     for path in assets:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -63,10 +66,12 @@ def prepare(env, workdir):
 
 
 def gh(args):
+    """Run gh with args and return its exit code."""
     return subprocess.run(["gh", *args], check=False).returncode
 
 
 def publish(env, run=gh):
+    """Create the tag then the release, undoing both if the release fails; returns the exit code."""
     repo, tag = env["REPO"], env["TAG"]
     tag_ref, release = prepare(env, env["RUNNER_TEMP"])
     if env.get("DRY_RUN") == "true":
@@ -89,6 +94,7 @@ def publish(env, run=gh):
 
 
 def main(env=os.environ):
+    """Publish the release env describes; returns the exit code."""
     return publish(env)
 
 

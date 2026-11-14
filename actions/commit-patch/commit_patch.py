@@ -16,14 +16,17 @@ BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 
 def patch_path(env):
+    """PATCH, or changes.patch in RUNNER_TEMP when it's empty."""
     return env.get("PATCH") or os.path.join(env["RUNNER_TEMP"], "changes.patch")
 
 
 def git(*args, check=True, **kwargs):
+    """Run git with args, passing kwargs to subprocess.run."""
     return subprocess.run(["git", *args], check=check, **kwargs)
 
 
 def main(env=None, today=None):
+    """Apply the patch, commit it with MESSAGE dated today, and push it to BRANCH."""
     env = os.environ if env is None else env
     today = today or datetime.datetime.now(datetime.timezone.utc).date()
     branch = env["BRANCH"]

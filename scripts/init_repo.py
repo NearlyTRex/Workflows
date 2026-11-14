@@ -76,10 +76,11 @@ _spec.loader.exec_module(version_tool)
 
 
 class InitError(Exception):
-    pass
+    """A repo, ref or setting this script can't work with, reported as an error and exit 1."""
 
 
 def git(repo, *args):
+    """git's stripped output for args run in repo, raising InitError when it fails."""
     result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise InitError(f"git {' '.join(args)} failed in {repo}: {result.stderr.strip()}")
@@ -139,6 +140,7 @@ def write_community_files(target, slug, dry_run=False):
 
 
 def library_name():
+    """OWNER/REPO of this library's GitHub origin, else DEFAULT_LIBRARY."""
     try:
         url = git(LIBRARY_ROOT, "remote", "get-url", "origin")
     except InitError:
@@ -166,6 +168,7 @@ def resolve_ref(ref):
 
 
 def tracked_files(target):
+    """target's files relative to it: those git tracks, or every file outside .git without git."""
     try:
         return git(target, "ls-files").splitlines()
     except InitError:
@@ -173,6 +176,8 @@ def tracked_files(target):
 
 
 def detect_stack(files):
+    """python with a pyproject.toml, cpp with CMake or mostly C/C++ sources, data when mostly
+    JSON, else shell."""
     names = {Path(f).name for f in files}
     if "pyproject.toml" in names:
         return "python"
@@ -185,6 +190,7 @@ def detect_stack(files):
 
 
 def detect_version_file(target, stack):
+    """The first file in target the version tool can read a version from, or None."""
     candidates = {"python": ["pyproject.toml"], "cpp": ["CMakeLists.txt"]}.get(stack, [])
     for name in candidates + ["VERSION", "package.json"]:
         path = target / name
@@ -198,6 +204,7 @@ def detect_version_file(target, stack):
 
 
 def hashed_requirement_files(target, files):
+    """The requirements*.txt and *.lock files among files that pin with --hash=, sorted."""
     found = []
     for f in files:
         name = Path(f).name
@@ -224,6 +231,7 @@ def lock_warnings(target, requirement_files):
 
 
 def dockerfiles(files):
+    """The Dockerfiles among files, sorted."""
     return sorted(f for f in files if Path(f).name == "Dockerfile")
 
 
@@ -231,241 +239,210 @@ COMPOSE_FILES = {"compose.yml", "compose.yaml", "docker-compose.yml", "docker-co
 
 
 def compose_files(files):
+    """The Docker Compose files among files, sorted."""
     return sorted(f for f in files if Path(f).name in COMPOSE_FILES)
 
 
 def installer_scripts(files):
+    """The Inno Setup scripts (.iss) among files, sorted."""
     return sorted(f for f in files if f.endswith(".iss"))
 
 
 def directory_of(path):
+    """The directory holding path as Dependabot names it: / for the root, else /DIR."""
     parent = str(Path(path).parent)
     return "/" if parent == "." else "/" + parent
 
 
+def suffixed(paths):
+    """(job-key suffix, path) per path: no suffix for a lone path, else -1, -2 and so on."""
+    return [("" if len(paths) == 1 else f"-{index + 1}", path) for index, path in enumerate(paths)]
+
+
+def inputs(*lines):
+    """A job's with: block holding lines, each one input."""
+    return "\n    with:" + "".join(f"\n      {line}" for line in lines)
+
+
+def concurrency(group):
+    """The concurrency block for a workflow run per ref, cancelled only on pull requests."""
+    return f"""concurrency:
+  group: {group}-${{{{ github.ref }}}}
+  # Only pull requests: a newer push supersedes their run. On main every run
+  # finishes, since each push's secret scan covers only that push's commits.
+  cancel-in-progress: ${{{{ github.event_name == 'pull_request' }}}}
+
+"""
+
+
+def workflow(name, triggers, jobs, preamble="", runs=""):
+    """A workflow file with no default permissions: preamble comments the on: block of
+    triggers, and runs (such as concurrency) comes before the jobs."""
+    return f"name: {name}\n\n{preamble}on:\n{triggers}\n\npermissions: {{}}\n\n{runs}jobs:\n" \
+        + "\n\n".join(jobs) + "\n"
+
+
+def dependabot_update(ecosystem, directories, group, strategy, assign):
+    """One weekly, grouped, cooled-down entry of dependabot.yml, with the strategy and assign
+    lines given, either of which may be empty."""
+    dirs = ", ".join(f'"{d}"' for d in directories)
+    return f"""  - package-ecosystem: {ecosystem}
+    directories: [{dirs}]{strategy}
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7{assign}
+    groups:
+      {group}:
+        patterns: ["*"]"""
+
+
+ON_MAIN = "  push:\n    branches: [main]"
+CI_TRIGGERS = ON_MAIN + "\n  pull_request:"
+SECURITY_TRIGGERS = CI_TRIGGERS + '\n  schedule:\n    - cron: "17 6 * * 1"\n  workflow_dispatch:'
+BUMP_TRIGGER = """  workflow_dispatch:
+    inputs:
+      bump:
+        description: patch, minor, major, or an exact version like 1.4.0
+        required: true
+        default: patch"""
+PENDING = "needs.pending.outputs.pending == 'true'"
+READ = ("contents: read",)
+WRITE = ("contents: write",)
+
+PYTHON_CI_HINT = """
+    # with:
+    #   commands: |
+    #     extra checks that run before the tests"""
+CMAKE_MATRIX = """
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]"""
+CMAKE_COMMANDS = """build-command: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --config Release --parallel"""
+COMPOSE_HINT = """
+    #   health-url: http://127.0.0.1:8080/health
+    #   commands: |
+    #     checks to run against the running stack"""
+SMOKE_TEST_HINT = "\n    #   smoke-test: .github\\scripts\\smoke-test-installer.ps1"
+
+RELEASE_PREAMBLE = """# Tags and publishes the version in {version_file} once, after the checks pass.
+# Pushes that don't change the version find the tag already there, and run
+# nothing else: CI has already tested them.
+"""
+PYPI_PREAMBLE = """# Tags and publishes the version in {version_file} once, after the checks pass:
+# a GitHub Release with the sdist and wheel attached, then the same files on
+# PyPI. Pushes that don't change the version find the tag already there, and
+# run nothing else: CI has already tested them.
+"""
+INSTALLERS_PREAMBLE = """# Tags and publishes the version in {version_file} once, after the checks pass, with
+# the installers built at that version attached. Pushes that don't change the version
+# find the tag already there, and build and check nothing: CI has already tested them.
+"""
+
+
 class Renderer:
+    """The workflow files for one target, every library reference pinned to sha with label."""
+
     def __init__(self, library, sha, label, target):
         self.target = target
         self.library = library
         self.sha = sha
         self.label = label
 
-    def uses(self, workflow):
-        return f"{self.library}/.github/workflows/{workflow}.yml@{self.sha} # {self.label}"
+    def uses(self, workflow_name):
+        """The pinned reference to the library's reusable workflow workflow_name."""
+        return f"{self.library}/.github/workflows/{workflow_name}.yml@{self.sha} # {self.label}"
 
     def uses_action(self, action):
+        """The pinned reference to the library's action."""
         return f"{self.library}/actions/{action}@{self.sha} # {self.label}"
 
+    def job(self, key, name, workflow_name, *, needs=None, when=None, permissions=READ, body=""):
+        """A job calling the library's workflow_name, granted permissions, when needs have run
+        and when holds; body (such as its inputs) follows the permissions."""
+        lines = [f"  {key}:", f"    name: {name}"]
+        lines += [f"    needs: {needs}"] if needs else []
+        lines += [f"    if: {when}"] if when else []
+        lines += [f"    uses: {self.uses(workflow_name)}", "    permissions:"]
+        lines += [f"      {permission}" for permission in permissions]
+        return "\n".join(lines) + body
+
+    def cmake_job(self, submodules):
+        """The cpp-build job building and testing a CMake project on Linux and Windows."""
+        settings = ["runs-on: ${{ matrix.os }}", "msvc: ${{ matrix.os == 'windows-latest' }}"]
+        settings += ["submodules: recursive"] if submodules else []
+        settings += [CMAKE_COMMANDS, "test-command: ctest --test-dir build -C Release --output-on-failure"]
+        return self.job("build", "Build (${{ matrix.os }})", "cpp-build", body=CMAKE_MATRIX + inputs(*settings))
+
     def ci(self, stack, files=()):
-        names = {Path(f).name for f in files}
+        """ci.yml: lint, plus the stack's checks and a job per compose file and installer script."""
         jobs = []
         if stack == "python":
-            jobs.append(f"""  python:
-    name: Python
-    uses: {self.uses("python-ci")}
-    permissions:
-      contents: read
-    # with:
-    #   commands: |
-    #     extra checks that run before the tests""")
+            jobs.append(self.job("python", "Python", "python-ci", body=PYTHON_CI_HINT))
         if stack == "cpp" and "CMakeLists.txt" in files:
-            submodules = "\n      submodules: recursive" if ".gitmodules" in names else ""
-            jobs.append(f"""  build:
-    name: Build (${{{{ matrix.os }}}})
-    uses: {self.uses("cpp-build")}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    with:
-      runs-on: ${{{{ matrix.os }}}}
-      msvc: ${{{{ matrix.os == 'windows-latest' }}}}{submodules}
-      build-command: |
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-        cmake --build build --config Release --parallel
-      test-command: ctest --test-dir build -C Release --output-on-failure""")
-        for index, compose in enumerate(compose_files(files)):
-            suffix = "" if len(compose_files(files)) == 1 else f"-{index + 1}"
-            jobs.append(f"""  compose{suffix}:
-    name: Compose ({compose})
-    uses: {self.uses("compose-test")}
-    permissions:
-      contents: read
-    with:
-      compose-file: {compose}
-    #   health-url: http://127.0.0.1:8080/health
-    #   commands: |
-    #     checks to run against the running stack""")
-        for index, script in enumerate(installer_scripts(files)):
-            suffix = "" if len(installer_scripts(files)) == 1 else f"-{index + 1}"
-            jobs.append(f"""  installer{suffix}:
-    name: Installer ({script})
-    uses: {self.uses("inno-setup")}
-    permissions:
-      contents: read
-    with:
-      script: {script}
-      # A placeholder: this only proves the script compiles. release.yml builds the real one.
-      version: 0.0.0-ci
-    #   smoke-test: .github\\scripts\\smoke-test-installer.ps1""")
-        jobs.append(f"""  lint:
-    name: Lint
-    uses: {self.uses("lint")}
-    permissions:
-      contents: read""")
-        return f"""name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-permissions: {{}}
-
-concurrency:
-  group: ci-${{{{ github.ref }}}}
-  # Only pull requests: a newer push supersedes their run. On main every run
-  # finishes, since each push's secret scan covers only that push's commits.
-  cancel-in-progress: ${{{{ github.event_name == 'pull_request' }}}}
-
-jobs:
-{(chr(10) * 2).join(jobs)}
-"""
+            jobs.append(self.cmake_job(".gitmodules" in {Path(f).name for f in files}))
+        jobs += [self.job(f"compose{suffix}", f"Compose ({compose})", "compose-test",
+                          body=inputs(f"compose-file: {compose}") + COMPOSE_HINT)
+                 for suffix, compose in suffixed(compose_files(files))]
+        placeholder = "# A placeholder: this only proves the script compiles. release.yml builds the real one."
+        jobs += [self.job(f"installer{suffix}", f"Installer ({script})", "inno-setup",
+                          body=inputs(f"script: {script}", placeholder, "version: 0.0.0-ci") + SMOKE_TEST_HINT)
+                 for suffix, script in suffixed(installer_scripts(files))]
+        jobs.append(self.job("lint", "Lint", "lint"))
+        return workflow("CI", CI_TRIGGERS, jobs, runs=concurrency("ci"))
 
     def security(self, stack, requirement_files, images):
+        """security.yml: the security scans, pip-audit of requirement_files, CodeQL for the stack,
+        dependency review, and a container scan per Dockerfile in images."""
         languages = {"python": '["python", "actions"]', "cpp": '["c-cpp", "actions"]'}.get(stack, '["actions"]')
-        audit = f"""
-    with:
-      pip-audit-files: {" ".join(requirement_files)}""" if requirement_files else ""
-        jobs = [f"""  security:
-    name: Security
-    uses: {self.uses("security")}
-    permissions:
-      contents: read{audit}""",
-                f"""  codeql:
-    name: CodeQL
-    uses: {self.uses("codeql")}
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    with:
-      languages: '{languages}'""",
-                f"""  dependency-review:
-    name: Dependency Review
-    if: github.event_name == 'pull_request'
-    uses: {self.uses("dependency-review")}
-    permissions:
-      contents: read"""]
-        for index, dockerfile in enumerate(images):
-            suffix = "" if len(images) == 1 else f"-{index + 1}"
-            title = "" if len(images) == 1 else f" ({dockerfile})"
-            context = str(Path(dockerfile).parent)
-            jobs.append(f"""  container-scan{suffix}:
-    name: Container Scan{title}
-    uses: {self.uses("container-scan")}
-    permissions:
-      contents: read
-    with:
-      dockerfile: {dockerfile}
-      context: {context}
-      config-scan: true""")
-        return f"""name: Security
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-  schedule:
-    - cron: "17 6 * * 1"
-  workflow_dispatch:
-
-permissions: {{}}
-
-concurrency:
-  group: security-${{{{ github.ref }}}}
-  # Only pull requests: a newer push supersedes their run. On main every run
-  # finishes, since each push's secret scan covers only that push's commits.
-  cancel-in-progress: ${{{{ github.event_name == 'pull_request' }}}}
-
-jobs:
-{(chr(10) * 2).join(jobs)}
-"""
+        audit = inputs(f"pip-audit-files: {' '.join(requirement_files)}") if requirement_files else ""
+        jobs = [self.job("security", "Security", "security", body=audit),
+                self.job("codeql", "CodeQL", "codeql", body=inputs(f"languages: '{languages}'"),
+                         permissions=("actions: read", "contents: read", "security-events: write")),
+                self.job("dependency-review", "Dependency Review", "dependency-review",
+                         when="github.event_name == 'pull_request'")]
+        jobs += [self.job(f"container-scan{suffix}", "Container Scan" + (f" ({dockerfile})" if suffix else ""),
+                          "container-scan", body=inputs(f"dockerfile: {dockerfile}",
+                                                        f"context: {Path(dockerfile).parent}", "config-scan: true"))
+                 for suffix, dockerfile in suffixed(images)]
+        return workflow("Security", SECURITY_TRIGGERS, jobs, runs=concurrency("security"))
 
     def prepare_release(self, version_file):
-        return f"""name: Prepare Release
+        """prepare-release.yml: on demand, bump the version in version_file and open a PR."""
+        prepare = self.job("prepare", "Prepare", "prepare-release", permissions=("contents: write", "pull-requests: write"),
+                           body=inputs("bump: ${{ inputs.bump }}", f"version-file: {version_file}"))
+        return workflow("Prepare Release", BUMP_TRIGGER, [prepare],
+                        preamble="# Bumps the version and opens a PR. Merging it lets release.yml tag and publish.\n")
 
-# Bumps the version and opens a PR. Merging it lets release.yml tag and publish.
-on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: patch, minor, major, or an exact version like 1.4.0
-        required: true
-        default: patch
+    def release_gate(self, version_file, check):
+        """The pending job, finding whether version_file's version is untagged, and the check
+        workflow, run only when it is."""
+        return [self.job("pending", "Pending", "release-check", body=inputs(f"version-file: {version_file}")),
+                self.job("check", "Check", check, needs="pending", when=PENDING)]
 
-permissions: {{}}
-
-jobs:
-  prepare:
-    name: Prepare
-    uses: {self.uses("prepare-release")}
-    permissions:
-      contents: write
-      pull-requests: write
-    with:
-      bump: ${{{{ inputs.bump }}}}
-      version-file: {version_file}
-"""
+    def release_job(self, needs, version_file, assets=None):
+        """The job tagging and releasing version_file's version, attaching assets with checksums."""
+        attached = [f"assets: {assets}", "checksums: true"] if assets else []
+        return self.job("release", "Release", "release", needs=needs, permissions=WRITE,
+                        body=inputs(f"version-file: {version_file}", *attached))
 
     def release(self, stack, version_file, files=(), pypi=None):
+        """release.yml for version_file: with installer scripts among files, attaching them; else
+        with pypi, publishing to that PyPI project; else tagging and releasing alone."""
         check = "python-ci" if stack == "python" else "lint"
         scripts = installer_scripts(files)
         if scripts:
             return self.release_with_installers(check, version_file, scripts)
         if pypi:
             return self.release_to_pypi(version_file, pypi)
-        return f"""name: Release
-
-# Tags and publishes the version in {version_file} once, after the checks pass.
-# Pushes that don't change the version find the tag already there, and run
-# nothing else: CI has already tested them.
-on:
-  push:
-    branches: [main]
-
-permissions: {{}}
-
-jobs:
-  pending:
-    name: Pending
-    uses: {self.uses("release-check")}
-    permissions:
-      contents: read
-    with:
-      version-file: {version_file}
-
-  check:
-    name: Check
-    needs: pending
-    if: needs.pending.outputs.pending == 'true'
-    uses: {self.uses(check)}
-    permissions:
-      contents: read
-
-  release:
-    name: Release
-    needs: check
-    uses: {self.uses("release")}
-    permissions:
-      contents: write
-    with:
-      version-file: {version_file}
-"""
+        jobs = [*self.release_gate(version_file, check), self.release_job("check", version_file)]
+        return workflow("Release", ON_MAIN, jobs, preamble=RELEASE_PREAMBLE.format(version_file=version_file))
 
     def dependabot(self, stack, files, images, assignees=()):
+        """dependabot.yml: the ecosystems files use, each one's pull requests given to assignees."""
         names = {Path(f).name for f in files}
         updates = [("github-actions", ["/"], "actions")]
         if stack == "python" or any(n.endswith(".lock") or n.startswith("requirements") for n in names):
@@ -481,23 +458,11 @@ jobs:
             updates.append(("docker-compose", sorted({directory_of(f) for f in compose}), "docker-compose"))
         if ".gitmodules" in names:
             updates.append(("gitsubmodule", ["/"], "submodules"))
-        assign = ""
-        if assignees:
-            assign = "\n    assignees: [" + ", ".join(f'"{a}"' for a in assignees) + "]"
-        blocks = []
-        for ecosystem, directories, group in updates:
-            dirs = ", ".join(f'"{d}"' for d in directories)
-            # With hash-locked files, only the locks should move, not the ranges in pyproject.toml.
-            strategy = "\n    versioning-strategy: lockfile-only" if ecosystem == "pip" and locked else ""
-            blocks.append(f"""  - package-ecosystem: {ecosystem}
-    directories: [{dirs}]{strategy}
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7{assign}
-    groups:
-      {group}:
-        patterns: ["*"]""")
+        assign = "\n    assignees: [" + ", ".join(f'"{a}"' for a in assignees) + "]" if assignees else ""
+        # With hash-locked files, only the locks should move, not the ranges in pyproject.toml.
+        lockfile_only = "\n    versioning-strategy: lockfile-only" if locked else ""
+        blocks = [dependabot_update(ecosystem, directories, group, lockfile_only if ecosystem == "pip" else "", assign)
+                  for ecosystem, directories, group in updates]
         return f"""version: 2
 
 # Weekly, grouped, and 7 days behind upstream releases so a compromised release
@@ -506,56 +471,9 @@ updates:
 {(chr(10) * 2).join(blocks)}
 """
 
-
-    def release_to_pypi(self, version_file, project):
-        return f"""name: Release
-
-# Tags and publishes the version in {version_file} once, after the checks pass:
-# a GitHub Release with the sdist and wheel attached, then the same files on
-# PyPI. Pushes that don't change the version find the tag already there, and
-# run nothing else: CI has already tested them.
-on:
-  push:
-    branches: [main]
-
-permissions: {{}}
-
-jobs:
-  pending:
-    name: Pending
-    uses: {self.uses("release-check")}
-    permissions:
-      contents: read
-    with:
-      version-file: {version_file}
-
-  check:
-    name: Check
-    needs: pending
-    if: needs.pending.outputs.pending == 'true'
-    uses: {self.uses("python-ci")}
-    permissions:
-      contents: read
-
-  build:
-    name: Build
-    needs: check
-    uses: {self.uses("python-build")}
-    permissions:
-      contents: read
-
-  release:
-    name: Release
-    needs: build
-    uses: {self.uses("release")}
-    permissions:
-      contents: write
-    with:
-      version-file: {version_file}
-      assets: dist
-      checksums: true
-
-  # A job of this file rather than a reusable workflow: PyPI's trusted
+    def publish_job(self, project):
+        """The job publishing a release's sdist and wheel to project on PyPI."""
+        return f"""  # A job of this file rather than a reusable workflow: PyPI's trusted
   # publisher names this file, release.yml, and the pypi environment, so no
   # token is stored, and it accepts no workflow called from another repository
   publish:
@@ -570,81 +488,29 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: {self.uses_action("pypi-publish")}
-"""
+      - uses: {self.uses_action("pypi-publish")}"""
+
+    def release_to_pypi(self, version_file, project):
+        """release.yml for version_file, attaching the sdist and wheel and publishing them to project."""
+        jobs = [*self.release_gate(version_file, "python-ci"),
+                self.job("build", "Build", "python-build", needs="check"),
+                self.release_job("build", version_file, "dist"), self.publish_job(project)]
+        return workflow("Release", ON_MAIN, jobs, preamble=PYPI_PREAMBLE.format(version_file=version_file))
 
     def release_with_installers(self, check, version_file, scripts):
-        installers = []
-        for index, script in enumerate(scripts):
-            suffix = "" if len(scripts) == 1 else f"-{index + 1}"
-            installers.append(f"""  installer{suffix}:
-    name: Installer ({script})
-    needs: pending
-    if: needs.pending.outputs.pending == 'true'
-    uses: {self.uses("inno-setup")}
-    permissions:
-      contents: read
-    with:
-      script: {script}
-      version: ${{{{ needs.pending.outputs.version }}}}
-      artifact: installer{suffix}""")
-        needs = ", ".join(["check", "attest"] + [f"installer{'' if len(scripts) == 1 else f'-{i + 1}'}"
-                                                 for i in range(len(scripts))])
-        installer_jobs = (chr(10) * 2).join(installers)
-        attest_needs = ", ".join(f"installer{'' if len(scripts) == 1 else f'-{i + 1}'}"
-                                 for i in range(len(scripts)))
-        return f"""name: Release
-
-# Tags and publishes the version in {version_file} once, after the checks pass, with
-# the installers built at that version attached. Pushes that don't change the version
-# find the tag already there, and build and check nothing: CI has already tested them.
-on:
-  push:
-    branches: [main]
-
-permissions: {{}}
-
-jobs:
-  pending:
-    name: Pending
-    uses: {self.uses("release-check")}
-    permissions:
-      contents: read
-    with:
-      version-file: {version_file}
-
-  check:
-    name: Check
-    needs: pending
-    if: needs.pending.outputs.pending == 'true'
-    uses: {self.uses(check)}
-    permissions:
-      contents: read
-
-{installer_jobs}
-
-  # Signed provenance for the installers, checked with gh attestation verify.
-  attest:
-    name: Attest
-    needs: [{attest_needs}]
-    uses: {self.uses("attest")}
-    permissions:
-      id-token: write
-      attestations: write
-    with:
-      artifacts: installer*
-
-  release:
-    name: Release
-    needs: [{needs}]
-    uses: {self.uses("release")}
-    permissions:
-      contents: write
-    with:
-      version-file: {version_file}
-      assets: installer*
-      checksums: true
-"""
+        """release.yml for version_file, building each Inno Setup script in scripts at its
+        version, attesting the installers and attaching them."""
+        installers = [f"installer{suffix}" for suffix, _ in suffixed(scripts)]
+        jobs = self.release_gate(version_file, check)
+        jobs += [self.job(f"installer{suffix}", f"Installer ({script})", "inno-setup", needs="pending", when=PENDING,
+                          body=inputs(f"script: {script}", "version: ${{ needs.pending.outputs.version }}",
+                                      f"artifact: installer{suffix}"))
+                 for suffix, script in suffixed(scripts)]
+        attest = self.job("attest", "Attest", "attest", needs=f"[{', '.join(installers)}]",
+                          permissions=("id-token: write", "attestations: write"), body=inputs("artifacts: installer*"))
+        jobs += ["  # Signed provenance for the installers, checked with gh attestation verify.\n" + attest,
+                 self.release_job(f"[{', '.join(['check', 'attest', *installers])}]", version_file, "installer*")]
+        return workflow("Release", ON_MAIN, jobs, preamble=INSTALLERS_PREAMBLE.format(version_file=version_file))
 
 
 def repin(target, ref=None, dry_run=False):
@@ -720,6 +586,7 @@ def branch_ruleset():
 
 
 def run_gh(command, payload=None):
+    """The output of the gh command, given payload on stdin, raising InitError when it fails."""
     result = subprocess.run(command, input=payload, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise InitError(f"{shlex.join(command)} failed: {(result.stderr or result.stdout).strip()}")
@@ -798,13 +665,15 @@ def plan(target, stack=None, version_file=None, release=True, ref=None, assignee
 
 
 def report_community_files(written, kept, dry_run=False):
+    """Print which community files were (or with dry_run would be) written, and which kept."""
     for name in written:
         print(f"  {'would write' if dry_run else 'wrote'} {name}")
     if kept:
         print(f"  kept the repo's own: {', '.join(kept)}")
 
 
-def main(argv=None):
+def argument_parser():
+    """The command line's parser, described by the first paragraph of this module's docstring."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("target")
     parser.add_argument("--stack", choices=["python", "cpp", "shell", "data"])
@@ -825,64 +694,58 @@ def main(argv=None):
                         help="Only turn on the GitHub settings the workflows need, with gh")
     parser.add_argument("--community", action="store_true",
                         help="Only write the community health files TARGET lacks")
-    args = parser.parse_args(argv)
+    return parser
 
-    if args.community:
-        target = Path(args.target).resolve()
-        if not target.is_dir():
-            print(f"error: {target} is not a directory", file=sys.stderr)
-            return 1
-        slug = origin_slug(target)
-        if not slug:
-            print(f"error: {target} has no GitHub origin for the community files to link to", file=sys.stderr)
-            return 1
-        written, kept = write_community_files(target, slug, args.dry_run)
-        report_community_files(written, kept, args.dry_run)
-        return 0
 
-    if args.settings:
-        try:
-            slug = apply_settings(args.target, args.dry_run)
-        except InitError as e:
-            print(f"error: {e}", file=sys.stderr)
-            return 1
-        if not args.dry_run:
-            print(f"{slug} is set up for these workflows")
-        return 0
+def failed(message):
+    """Exit status 1, after printing message as an error."""
+    print(f"error: {message}", file=sys.stderr)
+    return 1
 
-    if args.repin:
-        try:
-            changed, current, label = repin(args.target, args.ref, args.dry_run)
-        except InitError as e:
-            print(f"error: {e}", file=sys.stderr)
-            return 1
-        if changed:
-            print(f"{'Would pin' if args.dry_run else 'Pinned'} to {label}: {', '.join(changed)}")
-        if current:
-            print(f"Already pinned to {label}: {', '.join(current)}")
-        if not changed and not current:
-            print("No library pins found to move")
-        return 0
 
+def run_community(args):
+    """--community: write the community files TARGET lacks. Returns the exit status."""
+    target = Path(args.target).resolve()
+    if not target.is_dir():
+        return failed(f"{target} is not a directory")
+    slug = origin_slug(target)
+    if not slug:
+        return failed(f"{target} has no GitHub origin for the community files to link to")
+    written, kept = write_community_files(target, slug, args.dry_run)
+    report_community_files(written, kept, args.dry_run)
+    return 0
+
+
+def run_settings(args):
+    """--settings: turn on the GitHub settings TARGET's workflows need. Returns the exit status."""
     try:
-        target, stack, version_file, outputs, warnings = plan(
-            args.target, args.stack, args.version_file, not args.no_release, args.ref,
-            [] if args.no_assignee else args.assignee, args.pypi)
-    except (InitError, version_tool.VersionError, OSError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
+        slug = apply_settings(args.target, args.dry_run)
+    except InitError as e:
+        return failed(e)
+    if not args.dry_run:
+        print(f"{slug} is set up for these workflows")
+    return 0
 
-    existing = [name for name in outputs if (target / name).exists()]
-    if existing and not args.force and not args.dry_run:
-        print("error: these already exist (use --force to overwrite):", file=sys.stderr)
-        for name in existing:
-            print(f"  {name}", file=sys.stderr)
-        return 1
 
-    print(f"{target.name}: stack {stack}, " +
-          (f"releases from {version_file}" if version_file else "no release workflows (no version file found)"))
+def run_repin(args):
+    """--repin: move TARGET's library pins to --ref. Returns the exit status."""
+    try:
+        changed, current, label = repin(args.target, args.ref, args.dry_run)
+    except InitError as e:
+        return failed(e)
+    if changed:
+        print(f"{'Would pin' if args.dry_run else 'Pinned'} to {label}: {', '.join(changed)}")
+    if current:
+        print(f"Already pinned to {label}: {', '.join(current)}")
+    if not changed and not current:
+        print("No library pins found to move")
+    return 0
+
+
+def write_outputs(target, outputs, dry_run):
+    """Write each {path under target: text} of outputs, or with dry_run print it."""
     for name, text in outputs.items():
-        if args.dry_run:
+        if dry_run:
             print(f"\n--- {name}\n{text}")
             continue
         path = target / name
@@ -890,32 +753,69 @@ def main(argv=None):
         path.write_text(text)
         print(f"  wrote {name}")
 
+
+def print_settings_needed(target, version_file):
+    """List the repo settings the written workflows need, and the command that turns them on."""
+    print("\nRepo settings these workflows need (Settings → Advanced Security, Rules, and Actions → General):")
+    print("  - Dependency graph and Dependabot alerts, for dependency review and Dependabot")
+    print("  - A ruleset requiring pull requests for the default branch (Settings → Rules)")
+    if version_file:
+        print("  - \"Allow GitHub Actions to create and approve pull requests\", for prepare-release")
+    if (target / "SECURITY.md").exists():
+        print("  - Private vulnerability reporting, for SECURITY.md's report form")
+    print(f"Turn them on with: {Path(__file__).name} {shlex.quote(str(target))} --settings")
+
+
+def other_workflows(target, outputs):
+    """The workflow files target already has that outputs doesn't write, sorted."""
+    workflows = target / ".github" / "workflows"
+    if not workflows.is_dir():
+        return []
+    return sorted(p.name for p in workflows.glob("*.y*ml") if f".github/workflows/{p.name}" not in outputs)
+
+
+def run_init(args):
+    """Write TARGET's workflows, Dependabot config and community files. Returns the exit status."""
+    try:
+        target, stack, version_file, outputs, warnings = plan(
+            args.target, args.stack, args.version_file, not args.no_release, args.ref,
+            [] if args.no_assignee else args.assignee, args.pypi)
+    except (InitError, version_tool.VersionError, OSError) as e:
+        return failed(e)
+    existing = [name for name in outputs if (target / name).exists()]
+    if existing and not args.force and not args.dry_run:
+        print("error: these already exist (use --force to overwrite):", file=sys.stderr)
+        for name in existing:
+            print(f"  {name}", file=sys.stderr)
+        return 1
+    print(f"{target.name}: stack {stack}, " +
+          (f"releases from {version_file}" if version_file else "no release workflows (no version file found)"))
+    write_outputs(target, outputs, args.dry_run)
     slug = origin_slug(target)
     if slug:
         written, kept = write_community_files(target, slug, args.dry_run)
         report_community_files(written, kept, args.dry_run)
     else:
         print("  no GitHub origin, so no community files; add one and run with --community")
-
     for warning in warnings:
         print(f"  warning: {warning}")
-
     if not args.dry_run:
-        print("\nRepo settings these workflows need (Settings → Advanced Security, Rules, and Actions → General):")
-        print("  - Dependency graph and Dependabot alerts, for dependency review and Dependabot")
-        print("  - A ruleset requiring pull requests for the default branch (Settings → Rules)")
-        if version_file:
-            print("  - \"Allow GitHub Actions to create and approve pull requests\", for prepare-release")
-        if (target / "SECURITY.md").exists():
-            print("  - Private vulnerability reporting, for SECURITY.md's report form")
-        print(f"Turn them on with: {Path(__file__).name} {shlex.quote(str(target))} --settings")
-
-    others = sorted(p.name for p in (target / ".github" / "workflows").glob("*.y*ml")
-                    if f".github/workflows/{p.name}" not in outputs) \
-        if (target / ".github" / "workflows").is_dir() else []
-    if others:
+        print_settings_needed(target, version_file)
+    if others := other_workflows(target, outputs):
         print(f"  also present, check for overlap: {', '.join(others)}")
     return 0
+
+
+def main(argv=None):
+    """Run the command line argv (default: the process's own) and return its exit status."""
+    args = argument_parser().parse_args(argv)
+    if args.community:
+        return run_community(args)
+    if args.settings:
+        return run_settings(args)
+    if args.repin:
+        return run_repin(args)
+    return run_init(args)
 
 
 if __name__ == "__main__":

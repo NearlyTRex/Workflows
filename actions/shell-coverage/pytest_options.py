@@ -17,6 +17,7 @@ REQUIREMENT = "pytest-testrex[shell]"
 
 
 def build_options(env):
+    """The pytest options env asks for; the coverage ones only when SOURCE is set."""
     options = []
     sources = env.get("SOURCE", "").split()
     if sources:
@@ -42,6 +43,7 @@ def missing_modules(env, find_spec=importlib.util.find_spec):
 
 
 def main(env=None, find_spec=importlib.util.find_spec):
+    """Append the options to PYTEST_ADDOPTS in GITHUB_ENV; 1 if the plugins' modules are missing."""
     env = os.environ if env is None else env
     missing = missing_modules(env, find_spec)
     if missing:

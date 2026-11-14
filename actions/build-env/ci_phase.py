@@ -19,11 +19,13 @@ HEADER = "| Phase | Time |\n|---|---|\n"
 
 
 def duration(seconds):
+    """seconds as minutes and seconds, such as 2m 5s."""
     minutes, seconds = divmod(round(seconds), 60)
     return f"{minutes}m {seconds}s"
 
 
 def record(name, elapsed, status):
+    """Annotate a failed phase, and add its row to the step summary's timings table."""
     time_taken = duration(elapsed)
     if status != 0:
         print(f"::error::{name} failed after {time_taken}", flush=True)
@@ -46,6 +48,7 @@ def record(name, elapsed, status):
 
 
 def continues_table(text):
+    """Whether text ends in a timings table, so a row can go straight after it."""
     start = text.rfind(HEADER)
     if start == -1:
         return False
@@ -53,6 +56,7 @@ def continues_table(text):
 
 
 def main(argv=None):
+    """Run the command as the named phase and return its exit status."""
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) < 2:
         print("usage: ci-phase NAME COMMAND [ARGS...]", file=sys.stderr)

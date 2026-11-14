@@ -20,16 +20,18 @@ UPLOAD_URL = "https://upload.pypi.org/legacy/"
 
 
 class PublishError(Exception):
-    pass
+    """PyPI refused the token exchange; the message says why."""
 
 
 def fetch_json(url, opener, data=None, headers=None):
+    """The JSON body at url, POSTing data when given."""
     request = urllib.request.Request(url, data=data, headers=headers or {})
     with opener(request, timeout=30) as response:
         return json.load(response)
 
 
 def oidc_token(env, audience, opener):
+    """A GitHub OIDC token for this job, signed for audience."""
     url = env["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=" + urllib.parse.quote(audience)
     answer = fetch_json(url, opener, headers={"Authorization": "bearer " + env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
     return answer["value"]
@@ -53,6 +55,7 @@ def upload_token(pypi_url, oidc, opener):
 
 
 def main(env=None, opener=urllib.request.urlopen, run=subprocess.run):
+    """Get an upload token, then twine check and upload DIST; returns the exit code."""
     env = os.environ if env is None else env
     if not env.get("ACTIONS_ID_TOKEN_REQUEST_URL"):
         print("::error::no OIDC token to exchange; the publishing job needs permissions: id-token: write")

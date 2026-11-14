@@ -11,14 +11,17 @@ import sys
 
 
 def patch_path(env):
+    """PATCH, or changes.patch in RUNNER_TEMP when it's empty."""
     return env.get("PATCH") or os.path.join(env["RUNNER_TEMP"], "changes.patch")
 
 
 def git(*args, check=True, **kwargs):
+    """Run git with args, passing kwargs to subprocess.run."""
     return subprocess.run(["git", *args], check=check, **kwargs)
 
 
 def main(env=None):
+    """Stage PATHS, write the patch when anything changed, and set the changed output."""
     env = os.environ if env is None else env
     paths = env["PATHS"].split()
     if not paths:

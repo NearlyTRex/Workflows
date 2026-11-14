@@ -28,10 +28,12 @@ BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 
 def git(*arguments):
+    """Run git with arguments, raising if it fails."""
     subprocess.run(["git", *arguments], check=True)
 
 
 def main(env=None):
+    """Commit VERSION_FILE on release/TAG, push it, and open its pull request; 1 if TAG exists."""
     env = os.environ if env is None else env
     tag, version, version_file = env["TAG"], env["VERSION"], env["VERSION_FILE"]
     if tag_exists(env["REPO"], tag):

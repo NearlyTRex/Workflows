@@ -6,6 +6,7 @@ import sys
 
 
 def main():
+    """Annotate each invalid tracked JSON file; 1 if there are any."""
     paths = subprocess.run(["git", "ls-files", "-z", "*.json"], capture_output=True, check=True,
                            text=True).stdout.split("\0")
     bad = 0

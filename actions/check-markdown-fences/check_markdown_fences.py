@@ -16,6 +16,7 @@ QUOTE = re.compile(r"^(\s*>)+")
 
 
 def ignored_patterns():
+    """The patterns in .markdownlintignore, less blanks and comments; none without the file."""
     try:
         with open(".markdownlintignore", encoding="utf-8") as f:
             lines = f.read().splitlines()
@@ -25,6 +26,7 @@ def ignored_patterns():
 
 
 def is_ignored(path, patterns):
+    """Whether any pattern excludes path: a directory by prefix, else the path or its name."""
     for pattern in patterns:
         pattern = pattern.lstrip("/")
         if pattern.endswith("/"):
@@ -50,16 +52,23 @@ def find_problems(text):
                 continue
             opened = (fence[0], len(fence), number)
         elif fence[0] == opened[0] and len(fence) >= opened[1]:
-            if rest.strip():
-                problems.append((number, ("text after a closing fence, so the code block opened on "
-                                          f"line {opened[2]} does not end here: {raw.strip()}")))
+            problems += text_after_closing(number, raw, rest, opened[2])
             opened = None
     if opened is not None:
         problems.append((opened[2], "code block is never closed"))
     return problems
 
 
+def text_after_closing(number, raw, rest, opened_on):
+    """The problem with closing fence line number, as a list, when text follows the fence."""
+    if not rest.strip():
+        return []
+    return [(number, ("text after a closing fence, so the code block opened on "
+                      f"line {opened_on} does not end here: {raw.strip()}"))]
+
+
 def main():
+    """Annotate every fence problem in the tracked Markdown files; 1 when there are any."""
     paths = subprocess.run(["git", "ls-files", "-z", "*.md"], capture_output=True, check=True,
                            text=True).stdout.split("\0")
     patterns = ignored_patterns()

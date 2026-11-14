@@ -16,9 +16,3 @@ standards = [
     "mutable-defaults", "bare-except", "import-time-io", "no-narration", "commented-out-code",
     "long-functions", "long-modules",
 ]
-
-[tool.testrex.baseline]
-# Lowered as each is fixed, never raised
-documented = 110
-long-functions = 9
-long-modules = 1

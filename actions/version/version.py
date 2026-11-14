@@ -17,7 +17,7 @@ SEMVER = r"(\d+)\.(\d+)\.(\d+)"
 
 
 class VersionError(Exception):
-    pass
+    """A file or version spec that holds no usable X.Y.Z, or a bump that isn't higher."""
 
 
 def locate(path, text):
@@ -44,6 +44,7 @@ def locate(path, text):
 
 
 def parse(version):
+    """(major, minor, patch) of an X.Y.Z or vX.Y.Z string."""
     match = re.fullmatch(rf"v?{SEMVER}", version.strip())
     if not match:
         raise VersionError(f"'{version}' is not X.Y.Z")
@@ -51,12 +52,14 @@ def parse(version):
 
 
 def read(path):
+    """The version string held in the file at path."""
     text = Path(path).read_text(encoding="utf-8")
     start, end = locate(Path(path), text)
     return text[start:end]
 
 
 def next_version(current, spec):
+    """The version after current: spec is patch, minor, major or an explicit X.Y.Z that must be higher."""
     major, minor, patch = parse(current)
     if spec == "patch":
         new = (major, minor, patch + 1)
@@ -72,6 +75,7 @@ def next_version(current, spec):
 
 
 def bump(path, spec):
+    """Rewrite the version in the file at path as next_version gives it, and return the new one."""
     path = Path(path)
     text = path.read_text(encoding="utf-8")
     start, end = locate(path, text)
@@ -81,6 +85,7 @@ def bump(path, spec):
 
 
 def main(argv):
+    """Run read or bump and print the version; 2 for bad usage, 1 on an error."""
     try:
         if len(argv) == 2 and argv[0] == "read":
             print(read(argv[1]))

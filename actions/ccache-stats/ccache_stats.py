@@ -10,6 +10,7 @@ import sys
 
 
 def cleanups(print_stats):
+    """cleanups_performed from ccache --print-stats output, 0 when absent."""
     for line in print_stats.splitlines():
         name, _, value = line.partition("\t")
         if name == "cleanups_performed":
@@ -18,6 +19,7 @@ def cleanups(print_stats):
 
 
 def main():
+    """Show the statistics and warn if ccache ran any cleanups."""
     subprocess.run(["ccache", "--show-stats", "--verbose"], check=True)
     stats = subprocess.run(["ccache", "--print-stats"], capture_output=True, text=True, check=True).stdout
     if count := cleanups(stats):
