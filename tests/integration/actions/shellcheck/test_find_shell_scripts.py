@@ -5,7 +5,7 @@ import pytest
 
 from script_helpers import load_script
 
-pytestmark = pytest.mark.requires_binary("git")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git")]
 
 find = load_script("actions/shellcheck/find_shell_scripts.py")
 

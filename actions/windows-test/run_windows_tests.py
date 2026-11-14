@@ -50,7 +50,7 @@ def set_page_heap(gflags, program, enable):
 def run(command, cwd, timeout):
     """(exit status, or None on a timeout; everything it printed)."""
     try:
-        result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         return None, f"timed out after {timeout}s\n"
     return result.returncode, result.stdout + result.stderr

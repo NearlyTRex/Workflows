@@ -88,16 +88,16 @@ def attribute(value):
 def write_manifest(source, stage, version, publisher):
     """Write source into stage as AppxManifest.xml with Identity's fields set; it, parsed."""
     text = source.read_text(encoding="utf-8-sig")
-    identity = IDENTITY.search(text)
-    if identity is None:
+    found = IDENTITY.search(text)
+    if found is None:
         raise ToolError(f"{source} has no <Identity> element")
-    tag = identity.group(0)
+    tag = found.group(0)
     for name, value in (("Version", version), ("Publisher", publisher)):
         if value:
             tag, count = re.subn(rf'\b{name}\s*=\s*("[^"]*"|\'[^\']*\')', f"{name}={attribute(value)}", tag)
             if not count:
                 raise ToolError(f"{source}'s <Identity> has no {name} to set")
-    text = text[:identity.start()] + tag + text[identity.end():]
+    text = text[:found.start()] + tag + text[found.end():]
     (stage / "AppxManifest.xml").write_text(text, encoding="utf-8")
     return ET.fromstring(text)
 
@@ -139,10 +139,10 @@ def bundle_vclibs(stage, architecture, env):
     found = sorted(root.glob(f"*/Appx/Retail/{architecture}/Microsoft.VCLibs.{architecture}.*.appx"))
     if not found:
         raise ToolError(f"no Microsoft.VCLibs package for {architecture} under {root}")
-    with zipfile.ZipFile(found[-1]) as package:
-        names = [name for name in package.namelist() if "/" not in name and name.lower().endswith(".dll")]
+    with zipfile.ZipFile(found[-1]) as framework:
+        names = [name for name in framework.namelist() if "/" not in name and name.lower().endswith(".dll")]
         for name in names:
-            (stage / name).write_bytes(package.read(name))
+            (stage / name).write_bytes(framework.read(name))
     return names
 
 
@@ -203,10 +203,10 @@ def self_signed(subject, work, out, run, env):
     return pfx, password, cer
 
 
-def sign(package, pfx, password, run):
-    """Sign package with pfx, saying when its subject isn't the manifest's Publisher."""
+def sign(msix, pfx, password, run):
+    """Sign msix with pfx, saying when its subject isn't the manifest's Publisher."""
     try:
-        tool(run, "signtool", "sign", "/fd", "SHA256", "/f", str(pfx), "/p", password, str(package))
+        tool(run, "signtool", "sign", "/fd", "SHA256", "/f", str(pfx), "/p", password, str(msix))
     except ToolError as error:
         if PUBLISHER_MISMATCH in str(error):
             raise ToolError(f"{error}\nThe manifest's Publisher must be the certificate's subject.") from None

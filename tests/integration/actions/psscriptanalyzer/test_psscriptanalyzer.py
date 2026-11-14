@@ -12,7 +12,7 @@ from script_helpers import ROOT
 
 SCRIPT = ROOT / "actions" / "psscriptanalyzer" / "analyze.ps1"
 
-pytestmark = pytest.mark.requires_binary("git", "pwsh")
+pytestmark = [pytest.mark.integration, pytest.mark.requires_binary("git", "pwsh")]
 
 
 def run(tmp_path, files):
