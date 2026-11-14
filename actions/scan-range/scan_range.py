@@ -15,11 +15,13 @@ import sys
 
 
 def commit_exists(sha):
+    """Whether sha names a commit in the local clone."""
     return subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"],
                           capture_output=True, check=False).returncode == 0
 
 
 def scan_range(event, pr_base, pr_head, before, after, exists=commit_exists):
+    """The git log range of the event's new commits, or "" for the whole history."""
     if event == "pull_request" and pr_base and pr_head:
         return f"{pr_base}..{pr_head}"
     # A new branch reports its earlier commit as all zeros.
@@ -29,11 +31,13 @@ def scan_range(event, pr_base, pr_head, before, after, exists=commit_exists):
 
 
 def count(rev):
+    """The number of commits in rev, as git rev-list --count prints it."""
     return subprocess.run(["git", "rev-list", "--count", rev], capture_output=True,
                           text=True, check=True).stdout.strip()
 
 
 def main(env=os.environ):
+    """Print the range to scan and write it as log-opts to $GITHUB_OUTPUT."""
     log_opts = scan_range(env.get("EVENT", ""), env.get("PR_BASE", ""), env.get("PR_HEAD", ""),
                           env.get("BEFORE", ""), env.get("AFTER", ""))
     if log_opts:

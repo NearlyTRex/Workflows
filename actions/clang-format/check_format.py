@@ -16,6 +16,7 @@ VIOLATION = re.compile(r"(?m)^(?P<file>.+?):(?P<line>\d+):(?P<col>\d+): (?:error
 
 
 def main(argv=None):
+    """Check the sources with the clang-format named by argv[0]; 1 if any check fails."""
     clang_format = (argv if argv is not None else sys.argv[1:])[0]
     paths = [p for p in subprocess.run(["git", "ls-files", "-z", *PATTERNS], capture_output=True, check=True,
                                        text=True).stdout.split("\0") if p]

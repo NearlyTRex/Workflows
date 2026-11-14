@@ -16,6 +16,7 @@ SHEBANG = re.compile(rb"^#!\S*/(env\s+)?(ba|da|k)?sh(\s|$)")
 
 
 def is_shell_script(path):
+    """Whether path has a shell extension or its first line is a sh, bash, dash or ksh shebang."""
     if path.endswith(EXTENSIONS):
         return True
     try:
@@ -26,6 +27,7 @@ def is_shell_script(path):
 
 
 def main():
+    """Write the tracked shell scripts to stdout, NUL-separated, and their count to stderr."""
     paths = subprocess.run(["git", "ls-files", "-z"], capture_output=True, check=True,
                            text=True).stdout.split("\0")
     scripts = sorted({p for p in paths if p and is_shell_script(p)})

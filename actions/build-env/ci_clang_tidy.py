@@ -36,6 +36,7 @@ DIAGNOSTIC = re.compile(r"^(?P<file>.+?):(?P<line>\d+):(?P<col>\d+): (?:error|wa
 
 
 def parse_args(argv):
+    """The command line's options."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-p", dest="build_dir", type=Path, required=True,
                         help="directory with compile_commands.json")
@@ -49,6 +50,7 @@ def parse_args(argv):
 
 
 def select(entries, build_dir, files, exclude):
+    """The (path, entry) pairs of the database entries to check."""
     root = Path.cwd().resolve()
     chosen = []
     for entry in entries:
@@ -62,26 +64,34 @@ def select(entries, build_dir, files, exclude):
     return chosen
 
 
-def preprocess(entry):
-    arguments = list(entry["arguments"]) if "arguments" in entry else shlex.split(entry["command"])
-    kept, skip = [arguments[0]], False
-    for argument in arguments[1:]:
-        if skip:
-            skip = False
-        elif argument == "-o":
-            skip = True
+def without_output(arguments):
+    """The compiler's arguments less -c, and -o with the file after it."""
+    kept, rest = [], iter(arguments)
+    for argument in rest:
+        if argument == "-o":
+            next(rest, None)
         elif argument != "-c":
             kept.append(argument)
+    return kept
+
+
+def preprocess(entry):
+    """The entry's source preprocessed with its comments kept."""
+    arguments = list(entry["arguments"]) if "arguments" in entry else shlex.split(entry["command"])
+    kept = [arguments[0], *without_output(arguments[1:])]
     return subprocess.run(kept + ["-E", "-C", "-o", "-"], cwd=entry["directory"], capture_output=True,
                           check=True).stdout
 
 
 def display(path):
+    """path relative to the current directory when it is under it, else absolute."""
     root = Path.cwd().resolve()
     return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
 
 
 class Run:
+    """One run of clang-tidy over the chosen files, and its tallies."""
+
     def __init__(self, args, total):
         self.args = args
         self.total = total
@@ -97,6 +107,7 @@ class Run:
         self.annotated = set()
 
     def report(self, status, name, seconds, output=""):
+        """Print a file's numbered result line and its output, annotating the output."""
         with self.lock:
             self.done += 1
             print(f"[{self.done}/{self.total}] {status:7} {name} ({seconds:.1f}s)", flush=True)
@@ -105,6 +116,7 @@ class Run:
                 self.annotate(output)
 
     def annotate(self, output):
+        """Print each new diagnostic in output as an error annotation, on GitHub Actions only."""
         if os.environ.get("GITHUB_ACTIONS") != "true":
             return
         for line in output.splitlines():
@@ -117,6 +129,7 @@ class Run:
                       flush=True)
 
     def cache_key(self, path, command, entry):
+        """The hash a clean result for path is kept under, or None when it doesn't preprocess."""
         digest = hashlib.sha256(self.salt)
         digest.update("\0".join(command).encode())
         if not self.args.config_file:
@@ -132,6 +145,7 @@ class Run:
         return digest.hexdigest()
 
     def check(self, path, entry):
+        """Run clang-tidy on one file, or skip it when its clean result is cached, and report it."""
         start = time.monotonic()
         name = display(path)
         command = [self.args.clang_tidy, f"-p={self.args.build_dir}", "-quiet"]
@@ -165,11 +179,13 @@ class Run:
         self.report("checked", name, seconds)
 
     def prune(self):
+        """Remove the cache entries this run didn't use."""
         for marker in self.args.cache_dir.iterdir():
             if marker.name not in self.used:
                 marker.unlink()
 
     def summarize(self, elapsed):
+        """Print the totals, slowest files and failures, and add them to the step summary."""
         summary = (f"clang-tidy: {self.total} files, {self.cached} cached, {len(self.timings)} checked, "
                    f"{len(self.failed)} failed in {elapsed:.0f}s on {self.args.jobs} jobs")
         slowest = sorted(self.timings, reverse=True)[:5]
@@ -192,6 +208,7 @@ class Run:
 
 
 def main(argv=None):
+    """Check the chosen files; 1 when any fails, 2 without a compilation database."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
     args.build_dir = args.build_dir.resolve()
     database = args.build_dir / "compile_commands.json"

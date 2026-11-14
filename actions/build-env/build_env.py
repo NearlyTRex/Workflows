@@ -30,11 +30,13 @@ CCACHE_WRAPPERS = {"Linux": "/usr/lib/ccache", "macOS": "/opt/homebrew/opt/ccach
 
 
 def append(env, variable, lines):
+    """Add lines to the file the environment variable names."""
     with open(env[variable], "a", encoding="utf-8") as out:
         out.writelines(f"{line}\n" for line in lines)
 
 
 def install_tools(env):
+    """Write launchers for the TOOLS scripts to $RUNNER_TEMP/ci-tools and put it on PATH."""
     tools = env["TOOLS"]
     bin_dir = Path(env.get("RUNNER_TEMP", "/tmp")) / "ci-tools"
     bin_dir.mkdir(parents=True, exist_ok=True)
@@ -51,6 +53,7 @@ def install_tools(env):
 
 
 def set_parallel(env):
+    """Export a job count of the cores for CMake, and for make off Windows, unless already set."""
     cores = env.get("NUMBER_OF_PROCESSORS") or str(os.cpu_count() or 2)
     lines = []
     if not env.get("CMAKE_BUILD_PARALLEL_LEVEL"):
@@ -62,6 +65,7 @@ def set_parallel(env):
 
 
 def set_ccache(env):
+    """Export ccache's settings and CMake's launchers, and put its wrappers on PATH; Linux and macOS only."""
     runner = env.get("RUNNER_OS")
     if runner not in CCACHE_WRAPPERS:
         print(f"ccache is set up on Linux and macOS runners only; not on {runner or 'this runner'}")
@@ -80,6 +84,7 @@ def set_ccache(env):
 
 
 def main(env=None):
+    """Set up whichever of TOOLS, PARALLEL and CCACHE the environment asks for."""
     env = os.environ if env is None else env
     if env.get("TOOLS"):
         install_tools(env)

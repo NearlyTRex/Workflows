@@ -21,6 +21,7 @@ from pathlib import Path
 
 
 def has_own_config():
+    """Whether the working directory has a .coveragerc or a [tool.coverage] table in pyproject.toml."""
     if Path(".coveragerc").is_file():
         return True
     pyproject = Path("pyproject.toml")
@@ -28,10 +29,12 @@ def has_own_config():
 
 
 def coverage(*arguments, **options):
+    """Run python -m coverage with arguments, passing options to subprocess.run."""
     return subprocess.run([sys.executable, "-m", "coverage", *arguments], check=False, **options)
 
 
 def is_test_file(path):
+    """Whether path looks like a test: under tests/ or test/, test_*.py, *_test.py or conftest.py."""
     parts = Path(path).parts
     name = parts[-1]
     return ("tests" in parts[:-1] or "test" in parts[:-1] or name.startswith("test_")
@@ -63,6 +66,7 @@ def combine():
 
 
 def main(env=None):
+    """Run the tests under coverage, combine and report; the first of those to fail sets the exit code."""
     env = os.environ if env is None else env
     fail_under = env["FAIL_UNDER"]
     options = [] if has_own_config() else ["--branch", "--source=."]

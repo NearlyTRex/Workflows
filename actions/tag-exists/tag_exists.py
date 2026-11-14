@@ -10,12 +10,14 @@ import sys
 
 
 def tag_exists(repo, tag):
+    """Whether gh confirms tag exists in repo."""
     result = subprocess.run(["gh", "api", f"repos/{repo}/git/ref/tags/{tag}", "--silent"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     return result.returncode == 0
 
 
 def main(env=None):
+    """Write exists=true or false for TAG in REPO to $GITHUB_OUTPUT."""
     env = os.environ if env is None else env
     tag = env["TAG"]
     exists = tag_exists(env["REPO"], tag)

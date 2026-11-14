@@ -7,6 +7,7 @@ import tomllib
 
 
 def main():
+    """Annotate each invalid tracked TOML file; 1 if there are any."""
     paths = subprocess.run(["git", "ls-files", "-z", "*.toml"], capture_output=True, check=True,
                            text=True).stdout.split("\0")
     bad = 0

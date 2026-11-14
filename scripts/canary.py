@@ -42,10 +42,11 @@ _spec.loader.exec_module(init_repo)
 
 
 class CanaryError(Exception):
-    pass
+    """A step that stops the canary for one repo, or for all of them."""
 
 
 def run(command, cwd=None):
+    """The command's stripped output; CanaryError when it fails."""
     result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise CanaryError(f"{' '.join(command)} failed: {(result.stderr or result.stdout).strip()}")
@@ -67,6 +68,7 @@ def library_commit(ref):
 
 
 def repo_path(name):
+    """The checkout at name, or else of that name beside this library; CanaryError when there is none."""
     path = Path(name)
     if not path.is_dir():
         path = LIBRARY_ROOT.parent / name
@@ -76,6 +78,7 @@ def repo_path(name):
 
 
 def default_branch(repo):
+    """The branch origin's HEAD points at."""
     listed = run(["git", "ls-remote", "--symref", "origin", "HEAD"], cwd=repo)
     if match := re.search(r"^ref: refs/heads/(\S+)\tHEAD$", listed, re.MULTILINE):
         return match[1]
@@ -114,6 +117,7 @@ def push_canary(repo, ref, sha):
 
 
 def runs_for(repo, branch, commit):
+    """The branch's latest workflow runs that ran on commit."""
     listed = run(["gh", "run", "list", "--branch", branch, "--limit", "50",
                   "--json", "workflowName,event,status,conclusion,url,headSha"], cwd=repo)
     return [r for r in json.loads(listed) if r["headSha"] == commit]
@@ -142,7 +146,59 @@ def cleanup(repo):
     return branches
 
 
+def cleanup_all(names):
+    """Delete each named repo's canary branches and say which; whether any repo failed."""
+    failed = False
+    for name in names:
+        label = Path(name).name
+        try:
+            deleted = cleanup(repo_path(name))
+        except CanaryError as e:
+            print(f"{label}: error: {e}", file=sys.stderr)
+            failed = True
+            continue
+        print(f"{label}: deleted {', '.join(deleted)}" if deleted else f"{label}: no canary branches")
+    return failed
+
+
+def push_all(names, ref, sha):
+    """Push a canary to each named repo; what was pushed, and whether any repo failed."""
+    pushed, failed = [], False
+    for name in names:
+        label = Path(name).name
+        try:
+            repo = repo_path(name)
+            branch, commit, dispatched = push_canary(repo, ref, sha)
+        except (CanaryError, init_repo.InitError) as e:
+            print(f"{label}: error: {e}", file=sys.stderr)
+            failed = True
+            continue
+        extra = ", and a full Security run" if dispatched else ""
+        print(f"{label}: pushed {branch} with a draft pull request{extra}")
+        pushed.append((name, repo, branch, commit, dispatched))
+    return pushed, failed
+
+
+def report_runs(pushed, timeout):
+    """Wait for each pushed canary's runs and print how they ended; whether any failed."""
+    failed = False
+    for _, repo, branch, commit, dispatched in pushed:
+        try:
+            runs = wait_for_runs(repo, branch, commit, timeout, dispatched)
+        except CanaryError as e:
+            print(f"{repo.name}: error: {e}", file=sys.stderr)
+            failed = True
+            continue
+        print(f"{repo.name}:")
+        for r in sorted(runs, key=lambda r: (r["workflowName"], r["event"])):
+            ok = r["conclusion"] in PASSING
+            failed = failed or not ok
+            print(f"  {'ok  ' if ok else 'FAIL'} {r['workflowName']} ({r['event']}): {r['conclusion']}  {r['url']}")
+    return failed
+
+
 def main(argv=None):
+    """Push the canaries and report their runs, or clean them up; 1 when anything failed."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n", maxsplit=1)[0])
     parser.add_argument("ref", nargs="?", help="Library branch, tag or commit to try")
     parser.add_argument("repos", nargs="*", metavar="repo")
@@ -155,18 +211,8 @@ def main(argv=None):
     if not names:
         parser.error("name at least one repo")
 
-    failed = False
     if args.cleanup:
-        for name in names:
-            label = Path(name).name
-            try:
-                deleted = cleanup(repo_path(name))
-            except CanaryError as e:
-                print(f"{label}: error: {e}", file=sys.stderr)
-                failed = True
-                continue
-            print(f"{label}: deleted {', '.join(deleted)}" if deleted else f"{label}: no canary branches")
-        return 1 if failed else 0
+        return 1 if cleanup_all(names) else 0
 
     try:
         sha = library_commit(args.ref)
@@ -175,34 +221,10 @@ def main(argv=None):
         return 1
 
     # Push them all first, so the repos' runs go at the same time.
-    pushed = []
-    for name in names:
-        label = Path(name).name
-        try:
-            repo = repo_path(name)
-            branch, commit, dispatched = push_canary(repo, args.ref, sha)
-        except (CanaryError, init_repo.InitError) as e:
-            print(f"{label}: error: {e}", file=sys.stderr)
-            failed = True
-            continue
-        extra = ", and a full Security run" if dispatched else ""
-        print(f"{label}: pushed {branch} with a draft pull request{extra}")
-        pushed.append((name, repo, branch, commit, dispatched))
+    pushed, failed = push_all(names, args.ref, sha)
     if args.no_wait:
         return 1 if failed else 0
-
-    for name, repo, branch, commit, dispatched in pushed:
-        try:
-            runs = wait_for_runs(repo, branch, commit, args.timeout * 60, dispatched)
-        except CanaryError as e:
-            print(f"{repo.name}: error: {e}", file=sys.stderr)
-            failed = True
-            continue
-        print(f"{repo.name}:")
-        for r in sorted(runs, key=lambda r: (r["workflowName"], r["event"])):
-            ok = r["conclusion"] in PASSING
-            failed = failed or not ok
-            print(f"  {'ok  ' if ok else 'FAIL'} {r['workflowName']} ({r['event']}): {r['conclusion']}  {r['url']}")
+    failed = report_runs(pushed, args.timeout * 60) or failed
     if pushed:
         print(f"\nWhen done: {Path(__file__).name} --cleanup {' '.join(name for name, *_ in pushed)}")
     return 1 if failed else 0

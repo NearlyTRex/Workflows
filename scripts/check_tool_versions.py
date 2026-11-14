@@ -41,6 +41,7 @@ META = "{http://schemas.microsoft.com/ado/2007/08/dataservices/metadata}"
 
 
 def fetch(url):
+    """The body at url, waiting up to 30 seconds for it."""
     with urllib.request.urlopen(url, timeout=30) as response:
         return response.read()
 
@@ -59,10 +60,12 @@ def parse_feed(xml):
 
 
 def version_key(version):
+    """The version's numbers as a tuple, to compare by."""
     return tuple(int(part) for part in re.findall(r"\d+", version))
 
 
 def latest_stable(get=fetch, url=FEED):
+    """The newest stable innosetup version on every page of the Chocolatey feed."""
     stable = []
     while url:
         found, url = parse_feed(get(url))
@@ -73,6 +76,7 @@ def latest_stable(get=fetch, url=FEED):
 
 
 def pinned(workflow=INNO_WORKFLOW):
+    """The inno-setup-version default inno-setup.yml installs."""
     match = re.search(r'inno-setup-version:.*?default:\s*"([^"]+)"', workflow.read_text(), re.DOTALL)
     return match.group(1)
 

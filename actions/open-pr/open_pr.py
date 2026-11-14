@@ -13,6 +13,7 @@ import sys
 
 
 def open_pull_request(branch):
+    """The URL of the open pull request from branch, or "" when there is none."""
     result = subprocess.run(["gh", "pr", "view", branch, "--json", "url,state",
                              "--jq", 'select(.state == "OPEN") | .url'],
                             capture_output=True, text=True, check=False)
@@ -34,6 +35,7 @@ def ensure_pull_request(head, base, title, body, assignees=()):
 
 
 def main(env=None):
+    """Open or update the pull request from HEAD_BRANCH and set the url output."""
     env = os.environ if env is None else env
     assignees = [name for name in re.split(r"[\s,]+", env.get("ASSIGNEES", "")) if name]
     url = ensure_pull_request(env["HEAD_BRANCH"], env["BASE"], env["TITLE"], env["BODY"], assignees)

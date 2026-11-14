@@ -27,11 +27,13 @@ TEMPLATES = ["*.example", "*.sample", "*.template"]
 
 
 def matches(path, pattern):
+    """Whether pattern matches path, or only its file name when pattern has no "/"."""
     target = path if "/" in pattern else path.rsplit("/", 1)[-1]
     return fnmatch.fnmatchcase(target, pattern)
 
 
 def forbidden(paths, patterns):
+    """The paths a default or extra pattern matches and no template or "!" exception allows."""
     rules = DEFAULTS + [p for p in patterns if not p.startswith("!")]
     exceptions = TEMPLATES + [p[1:] for p in patterns if p.startswith("!")]
     return [path for path in paths
@@ -40,6 +42,7 @@ def forbidden(paths, patterns):
 
 
 def main(argv=None):
+    """Annotate each forbidden tracked file; 1 if there are any."""
     patterns = sys.argv[1:] if argv is None else argv
     paths = subprocess.run(["git", "ls-files", "-z"], capture_output=True, check=True,
                            text=True).stdout.split("\0")
