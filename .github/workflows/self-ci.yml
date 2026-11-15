@@ -162,7 +162,11 @@ jobs:
       apt-packages: ninja-build g++-12
       ccache: true
       cache-key: fixture-cpp-old-glibc
+      # The container runs as root over a checkout the runner owns, so git works
+      # here, and in the build after it, only if the job trusts the workspace.
+      local-tag: v0.0.0-self-test
       build-command: |
+        test "$(git describe --tags --exact-match)" = v0.0.0-self-test
         test "$(cmake --version | head -n 1)" = "cmake version 3.28.3"
         clang++ --version | grep -q "clang version 18"
         ci-phase Configure cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
