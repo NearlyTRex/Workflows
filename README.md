@@ -37,7 +37,7 @@ page lists the inputs, their defaults and the permissions.
 
 | Page | Workflows | What they do |
 |---|---|---|
-| [Python](docs/python.md) | `python-ci`, `python-build` | Tests under a coverage gate, shell coverage and a shell sandbox; hash-locked builds, and publishing to PyPI |
+| [Python](docs/python.md) | `python-ci`, `python-build` | Tests under a coverage gate, shell and JavaScript coverage and a shell sandbox; hash-locked builds, and publishing to PyPI |
 | [Lint](docs/lint.md) | `lint` | shellcheck, rumdl, yamllint, actionlint, PSScriptAnalyzer, clang-format, and JSON and TOML parsing |
 | [Security](docs/security.md) | `security`, `codeql`, `dependency-review`, `container-scan` | zizmor, gitleaks, pip-audit, tracked credential files, CodeQL, and image scans |
 | [C and C++](docs/cpp.md) | `cpp-build`, `windows-test`, `inno-setup` | Builds on any runner with MSVC, LLVM, ccache and clang-tidy; Windows tests under page heap; installers |

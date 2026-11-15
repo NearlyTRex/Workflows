@@ -3,7 +3,8 @@ name: Python CI
 # Installs the project (from its hash-locked dev requirements when present),
 # lints it with ruff, runs any extra commands, then the tests, which fail
 # below 100% coverage unless coverage-fail-under says otherwise. With
-# shell-coverage-source, the bash scripts the tests run are measured too.
+# shell-coverage-source, the bash scripts the tests run are measured too, and
+# with node-version and js-coverage-source, the JavaScript ones.
 on:
   workflow_call:
     inputs:
@@ -63,6 +64,26 @@ on:
         description: Provide the shell_sandbox fixture, which runs scripts as root in a disposable user namespace with stubbed commands
         type: boolean
         default: false
+      node-version:
+        description: Set up this node and install package.json's dependencies with npm ci, putting node_modules/.bin on PATH. Empty leaves node alone
+        type: string
+        default: ""
+      js-coverage-source:
+        description: Space-separated scripts or directories (searched for *.js, *.mjs and *.cjs) whose statements the tests must run. Needs node-version and eslint in the devDependencies. Empty leaves JS coverage off
+        type: string
+        default: ""
+      js-coverage-exclude:
+        description: Space-separated globs of scripts to leave out, such as vendored or generated ones
+        type: string
+        default: ""
+      js-coverage-fail-under:
+        description: Minimum percent of JavaScript statements run. Empty reports without failing
+        type: string
+        default: "100"
+      js-coverage-branch:
+        description: "Also count the right side of each && || ?? and each arm of ?: as a statement that must run"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -97,10 +118,29 @@ jobs:
         run: |
           if [ -f "$LOCK" ]; then
             pip install --require-hashes --no-deps -r "$LOCK"
-            pip install --no-deps --no-build-isolation -e .
+            # A repo that only uses Python for its tests, such as a Node
+            # project tested through pytest-testrex, has nothing to install.
+            if grep -qs '^\[project\]' pyproject.toml || [ -f setup.py ]; then
+              pip install --no-deps --no-build-isolation -e .
+            fi
           else
             pip install -e ".[dev]"
           fi
+
+      - if: inputs.node-version != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      # Install scripts are off: the tests need the packages, not whatever a
+      # dependency runs at install time.
+      - name: Node dependencies
+        if: inputs.node-version != ''
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
 
       - if: inputs.ruff
         uses: $/actions/setup-tools
@@ -132,6 +172,15 @@ jobs:
           fail-under: ${{ inputs.shell-coverage-fail-under }}
           branch: ${{ inputs.shell-coverage-branch }}
           sandbox: ${{ inputs.shell-sandbox }}
+
+      - name: JavaScript coverage
+        if: inputs.js-coverage-source != ''
+        uses: $/actions/js-coverage
+        with:
+          source: ${{ inputs.js-coverage-source }}
+          exclude: ${{ inputs.js-coverage-exclude }}
+          fail-under: ${{ inputs.js-coverage-fail-under }}
+          branch: ${{ inputs.js-coverage-branch }}
 
       - name: Tests
         if: '!inputs.coverage'

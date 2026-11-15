@@ -1,0 +1,3 @@
+pytest
+# node --test files collected as tests, JS coverage and eslint, as python-ci's js inputs expect
+pytest-testrex[js]>=0.1.7

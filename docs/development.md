@@ -12,6 +12,7 @@ so one pin fixes the whole chain. The actions are:
 | `setup-tools` | zizmor, pip-audit, ruff, shellcheck, rumdl and yamllint from [`requirements.txt`](../actions/setup-tools/requirements.txt), installed with hashes into a private venv |
 | `coverage` | Runs the tests under hash-locked coverage.py and enforces the threshold |
 | `shell-coverage` | Turns pytest-testrex's shell coverage and sandbox on for the job's later pytest runs |
+| `js-coverage` | Turns pytest-testrex's JavaScript coverage on for the job's later pytest runs, and fails unless node and eslint are there to run |
 | `version` | Reads or bumps the version; [`version.py`](../actions/version/version.py) runs locally too |
 | `zizmor` | zizmor with [this config](../actions/zizmor/zizmor.yml) |
 | `gitleaks`, `trivy`, `trivy-config`, `actionlint` | Container actions. Their `Dockerfile` pins the image by digest |

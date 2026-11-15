@@ -13,3 +13,13 @@ def load_script(relative_path, name=None):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def written(path):
+    """The NAME=value lines a script appended to a GITHUB_ENV file, as a dict."""
+    return dict(line.split("=", 1) for line in path.read_text().splitlines())
+
+
+def finds(*present):
+    """A stand-in for importlib's find_spec or shutil.which that finds only the names in present."""
+    return lambda name: object() if name in present else None

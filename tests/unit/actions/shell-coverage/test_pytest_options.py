@@ -3,17 +3,9 @@
 import shlex
 import sys
 
-from script_helpers import load_script
+from script_helpers import finds, load_script, written
 
 pytest_options = load_script("actions/shell-coverage/pytest_options.py")
-
-
-def written(path):
-    return dict(line.split("=", 1) for line in path.read_text().splitlines())
-
-
-def finds(*present):
-    return lambda name: object() if name in present else None
 
 
 def test_nothing_on_adds_nothing():
