@@ -1,0 +1,39 @@
+name: JavaScript coverage
+description: >-
+  Turns on JavaScript coverage for the pytest runs in the rest of the job, so the
+  scripts the node --test files run must reach a coverage threshold, and checks
+  node and eslint are on PATH so pytest-testrex's JavaScript tests and eslint rule
+  run rather than skip. The plugin comes from pytest-testrex, which the project
+  installs with its test requirements as pytest-testrex[js]. Needs the project's
+  Python and node already set up.
+
+inputs:
+  source:
+    description: Space-separated scripts or directories (searched for *.js, *.mjs and *.cjs) to measure, relative to pytest's rootdir. Empty only checks the plugin, node and eslint
+    required: false
+    default: ""
+  exclude:
+    description: Space-separated globs of scripts to leave out, matched against each script's path from the rootdir
+    required: false
+    default: ""
+  fail-under:
+    description: Minimum percent of JavaScript statements the tests must run. Empty reports without failing
+    required: false
+    default: "100"
+  branch:
+    description: "Also count the right side of each && || ?? and each arm of ?: as a statement that must run"
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Turn the plugin on
+      shell: bash
+      env:
+        SCRIPT: ${{ github.action_path }}/pytest_options.py
+        SOURCE: ${{ inputs.source }}
+        EXCLUDE: ${{ inputs.exclude }}
+        FAIL_UNDER: ${{ inputs.fail-under }}
+        BRANCH: ${{ inputs.branch }}
+      run: python "$SCRIPT"

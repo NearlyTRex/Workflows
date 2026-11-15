@@ -2,13 +2,15 @@
 
 | Workflow | Inputs (defaults) | Caller grants |
 |---|---|---|
-| `python-ci.yml` | `runs-on` (ubuntu-latest), `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100), `shell-coverage-source`, `shell-coverage-exclude`, `shell-coverage-fail-under` (100), `shell-coverage-branch` (false), `shell-sandbox` (false) | `contents: read` |
+| `python-ci.yml` | `runs-on` (ubuntu-latest), `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-dev.txt), `ruff` (true), `ruff-select` (E4,E7,E9,F), `commands`, `test-command` (pytest -q), `coverage` (true), `coverage-fail-under` (100), `shell-coverage-source`, `shell-coverage-exclude`, `shell-coverage-fail-under` (100), `shell-coverage-branch` (false), `shell-sandbox` (false), `node-version`, `js-coverage-source`, `js-coverage-exclude`, `js-coverage-fail-under` (100), `js-coverage-branch` (false) | `contents: read` |
 | `python-build.yml` | `runs-on` (ubuntu-latest), `python-version` (3.12), `working-directory` (.), `lock-file` (requirements-build.txt), `artifact-name` (dist) | `contents: read` |
 
 ## `python-ci`
 
 - **Install:** from the hash-locked `lock-file` when there is one, otherwise with
-  `pip install -e ".[dev]"`. Downloads are cached between runs, keyed on `pyproject.toml` and
+  `pip install -e ".[dev]"`. With a lock, the project itself is installed only when
+  `pyproject.toml` has a `[project]` table or there is a `setup.py`, so a repo that uses Python
+  only for its tests needs neither. Downloads are cached between runs, keyed on `pyproject.toml` and
   the `requirements*.txt` files.
 - **Ruff:** uses the repo's own `[tool.ruff]` or `ruff.toml` when present. Otherwise it checks
   `ruff-select`: syntax errors, undefined names, unused imports.
@@ -78,6 +80,33 @@
     skip where namespaces are unavailable, such as on macOS.
   - **Locally:** with the test requirements installed, run
     `pytest --shell-cov-source scripts --shell-cov-fail-under 100`.
+- **Node:** `node-version` sets up that node and runs `npm ci --ignore-scripts` in the
+  working directory, which needs a `package-lock.json`, then puts `node_modules/.bin` on `PATH`.
+  Install scripts don't run: the tests need the packages, not what a dependency does at install.
+- **JavaScript coverage:** `js-coverage-source` names scripts, or directories searched for `*.js`,
+  `*.mjs` and `*.cjs`, that the tests must run. pytest-testrex runs each `*.test.js` under the
+  suites with `node --test`, as a pytest item, and every node it starts writes V8 coverage; the run
+  fails below `js-coverage-fail-under`, 100 by default, or empty to only report. With
+  `js-coverage-branch`, the right side of each `&&`, `||` and `??` and each arm of `?:` count too.
+  Its meta suite also runs eslint over the test files and its `js_sources`.
+
+  ```yaml
+  with:
+    node-version: "24"
+    coverage: false         # no Python to measure
+    js-coverage-source: lib main.js
+  ```
+
+  - **Requirements:** the repo lists `pytest-testrex[js]` in its hash-locked test requirements
+    and eslint in `package.json`'s `devDependencies`, so its lock pins the eslint that runs.
+  - **Nothing skips:** locally the JavaScript tests and the eslint rule skip without `node` or
+    `eslint`. Here the job fails instead, saying which is missing, so a run that checked nothing
+    can't pass.
+  - **A Node repo:** with no Python package, give it a `pyproject.toml` holding only
+    `[tool.pytest.ini_options]` and `[tool.testrex]`, a `requirements-dev.in` of `pytest` and
+    `pytest-testrex[js]` compiled to a hash-locked `requirements-dev.txt`, and the meta suite in
+    `Tests/unit/meta/`. Set `coverage: false`, since coverage.py would only measure the tests.
+    [`tests/fixtures/js-app`](../tests/fixtures/js-app) is one.
 
 ## Dependency locks
 

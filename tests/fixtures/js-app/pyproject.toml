@@ -1,0 +1,7 @@
+# A JavaScript project tested through pytest: pytest-testrex runs Tests/**/*.test.js with
+# node --test, and its meta suite runs eslint. There is no Python package to install.
+[tool.pytest.ini_options]
+testpaths = ["Tests"]
+
+[tool.testrex]
+js_sources = ["greet.js"]
