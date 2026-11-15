@@ -250,6 +250,14 @@ jobs:
           submodules: ${{ inputs.submodules }}
           fetch-depth: ${{ inputs.fetch-depth }}
 
+      # A container job runs as root over a checkout the runner's user owns, and
+      # checkout trusts it only for its own steps, so every later git command
+      # (a build's git describe among them) would stop at "dubious ownership".
+      - name: Trust the workspace
+        if: job.container.id != ''
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       # Lightweight, so it needs no git identity, and the same commit release.yml
       # tags afterwards, so the binary and the release agree.
       - name: Tag locally
