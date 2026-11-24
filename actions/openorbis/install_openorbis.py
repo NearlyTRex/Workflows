@@ -44,6 +44,7 @@ LIBSSL = Download(
     "http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb",
     "7cf39d70a639017d1dd7c8d36daa2258063608688e449fddf40ffdd46f992a78",
 )
+USER_AGENT = "workflows-openorbis/1.0"
 SDK = Path("OpenOrbis", "PS4Toolchain")
 TOOLS = ("create-fself", "create-gp4", "readoelf")
 MODE_T = re.compile(r"typedef unsigned (int|short) mode_t;")
@@ -64,7 +65,9 @@ class InstallError(Exception):
 def download(url, path):
     """Save the body at url to path, waiting up to a minute for each read; its sha256."""
     digest = hashlib.sha256()
-    with urllib.request.urlopen(url, timeout=60) as response, open(path, "wb") as out:
+    # archive.ubuntu.com refuses urllib's own Python-urllib user agent with a 403.
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=60) as response, open(path, "wb") as out:
         while chunk := response.read(1 << 20):
             digest.update(chunk)
             out.write(chunk)

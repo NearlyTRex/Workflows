@@ -189,11 +189,13 @@ def test_download_saves_the_body_in_chunks_and_hashes_it(tmp_path, monkeypatch):
     body = b"x" * ((1 << 20) + 5)
     opened = []
 
-    def urlopen(url, timeout):
-        opened.append((url, timeout))
+    def urlopen(request, timeout):
+        opened.append((request.full_url, request.get_header("User-agent"), timeout))
         return io.BytesIO(body)
 
     monkeypatch.setattr(install_openorbis.urllib.request, "urlopen", urlopen)
     target = tmp_path / "download"
     assert install_openorbis.download("https://example.test/oo", target) == hashlib.sha256(body).hexdigest()
-    assert target.read_bytes() == body and opened == [("https://example.test/oo", 60)]
+    assert target.read_bytes() == body
+    # archive.ubuntu.com refuses urllib's own user agent.
+    assert opened == [("https://example.test/oo", "workflows-openorbis/1.0", 60)]

@@ -15,13 +15,14 @@ edition path is hard-coded), installs an LLVM release with `llvm-version` (on Li
 packages from apt.llvm.org beside the runner's clang, libc++ included, so the build names
 `clang++-23` and the like; on Windows, the newest `N.x.y` from LLVM's own archive, checked against
 the sha256 GitHub gives for it, with its `clang-cl`, `lld-link` and `clang-tidy` first on `PATH`,
-for when Visual Studio's STL needs a newer clang than the image has), restores `cache-paths` keyed on `cache-key-files`, and uploads `artifact-path` as
-`artifact`. The cache is named by `cache-key`, or else the artifact name, so a CI build and a
-release build of the same thing can share one. `container` runs the whole job inside an image on a
-Linux runner, which is how a toolchain that ships as an image builds here. Console homebrew has
-inputs of its own: `openorbis-version` for the [PS4](homebrew/ps4.md), `devkitpro` for the
-[Switch](homebrew/switch.md), and `msvc-uwp` with `ci-msix` for the [Xbox](homebrew/xbox.md). For
-several platforms or configurations, the caller passes a matrix:
+for when Visual Studio's STL needs a newer clang than the image has), restores `cache-paths` keyed
+on `cache-key-files`, and uploads `artifact-path` as `artifact`. The cache is named by `cache-key`,
+or else the artifact name, so a CI build and a release build of the same thing can share one.
+`container` runs the whole job inside an image on a Linux runner, which is how a toolchain that
+ships as an image builds here. Console homebrew has inputs of its own: `openorbis-version` for the
+[PS4](homebrew/ps4.md), `devkitpro` for the [Switch](homebrew/switch.md), and `msvc-uwp` with
+`ci-msix` for the [Xbox](homebrew/xbox.md). For several platforms or configurations, the caller
+passes a matrix:
 
 ```yaml
 build:
