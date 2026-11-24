@@ -191,6 +191,25 @@ jobs:
       os-floors: glibc:2.35
       os-floor-paths: build/fixture.tar.gz
 
+  # The fixture built with clang-cl from LLVM's own Windows archive, which must
+  # come ahead of the image's LLVM and anything the MSVC setup put on PATH, and
+  # be new enough for the image's Visual Studio STL.
+  cpp-windows-llvm:
+    name: C++ (Windows, clang-cl)
+    uses: $/.github/workflows/cpp-build.yml
+    permissions:
+      contents: read
+    with:
+      runs-on: windows-latest
+      msvc: true
+      llvm-version: "23"
+      build-command: |
+        clang-cl --version | grep -q "clang version 23\."
+        lld-link --version | grep -q "LLD 23\."
+        ci-phase Configure cmake -S tests/fixtures/cpp-app -B build -G Ninja -DCMAKE_CXX_COMPILER=clang-cl
+        ci-phase Build cmake --build build --parallel
+      test-command: ci-phase Test ctest --test-dir build --output-on-failure
+
   # The fixture built for macOS 11 on a newer runner, by the deployment target
   # alone, with CMake from Kitware's universal archive.
   cpp-macos-floor:

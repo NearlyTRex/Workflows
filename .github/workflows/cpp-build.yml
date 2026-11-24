@@ -78,8 +78,10 @@ on:
         default: false
       llvm-version:
         description: >-
-          An LLVM release to install from apt.llvm.org beside the runner's clang, e.g. 23:
-          clang-N, clang-tidy-N, clang-format-N, lld-N, llvm-N and libc++; Linux runners only
+          An LLVM release to install, e.g. 23. On Linux, from apt.llvm.org beside the runner's
+          clang: clang-N, clang-tidy-N, clang-format-N, lld-N, llvm-N and libc++. On Windows, the
+          newest N.x.y from LLVM's Windows archive, its clang-cl, lld-link and clang-tidy first on PATH.
+          Linux and Windows runners
         type: string
         default: ""
       llvm-on-path:
@@ -324,9 +326,11 @@ jobs:
           $vars.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8 }
           Write-Host "MSVC environment from $vs ($env:ARCH $mode)"
 
-      # LLVM's own repository, for a newer clang and libc++ than the distribution ships.
+      # LLVM's own repository, for a newer clang and libc++ than the distribution ships;
+      # on Windows its own archive, for a clang-cl as new as Visual Studio's STL needs.
+      # After the MSVC setup, so its bin is ahead of anything vcvarsall put on PATH.
       - name: Install LLVM
-        if: inputs.llvm-version != '' && runner.os == 'Linux'
+        if: inputs.llvm-version != '' && runner.os != 'macOS'
         uses: $/actions/llvm
         with:
           version: ${{ inputs.llvm-version }}
