@@ -25,7 +25,7 @@ so one pin fixes the whole chain. The actions are:
 | `open-pr` | Opens a pull request, or updates the one already open from the branch, for `release-pr` and `scheduled-update` |
 | `wait-for-url` | Waits for a URL to answer below 400, by the clock, for `compose-test` |
 | `shellcheck` | Finds tracked shell scripts by extension and shebang, and shellchecks them |
-| `llvm` | An LLVM release from apt.llvm.org beside the runner's clang, for `cpp-build`'s `llvm-version` |
+| `llvm` | An LLVM release from apt.llvm.org beside the runner's clang, or from LLVM's Windows archive first on `PATH`, for `cpp-build`'s `llvm-version` |
 | `openorbis` | A pinned OpenOrbis PS4 Toolchain release, its LLVM and its CMake toolchain and helpers, for `cpp-build`'s `openorbis-version` |
 | `cmake` | A CMake release from Kitware, checked against the release's SHA-256 list, first on `PATH`, for `cpp-build`'s `cmake-version` |
 | `os-floor` | Fails when a binary, or one inside an archive, needs a newer glibc, macOS or Windows than its floor, for `cpp-build`'s `os-floors` |

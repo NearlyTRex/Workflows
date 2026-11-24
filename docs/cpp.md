@@ -11,15 +11,18 @@
 `cpp-build` runs the repo's own build and test commands in bash on any runner (Git Bash on Windows),
 so it fits CMake, a `Setup.py` or a packaging script alike. Around them it installs `apt-packages`
 on Linux and `brew-packages` on macOS, puts MSVC on `PATH` with `msvc` (found with vswhere, so no
-edition path is hard-coded), installs an LLVM release from apt.llvm.org with `llvm-version`
-(versioned packages beside the runner's clang, libc++ included, so the build names `clang++-23` and
-the like), restores `cache-paths` keyed on `cache-key-files`, and uploads `artifact-path` as
-`artifact`. The cache is named by `cache-key`, or else the artifact name, so a CI build and a
-release build of the same thing can share one. `container` runs the whole job inside an image on a
-Linux runner, which is how a toolchain that ships as an image builds here. Console homebrew has
-inputs of its own: `openorbis-version` for the [PS4](homebrew/ps4.md), `devkitpro` for the
-[Switch](homebrew/switch.md), and `msvc-uwp` with `ci-msix` for the [Xbox](homebrew/xbox.md). For
-several platforms or configurations, the caller passes a matrix:
+edition path is hard-coded), installs an LLVM release with `llvm-version` (on Linux, versioned
+packages from apt.llvm.org beside the runner's clang, libc++ included, so the build names
+`clang++-23` and the like; on Windows, the newest `N.x.y` from LLVM's own archive, checked against
+the sha256 GitHub gives for it, with its `clang-cl`, `lld-link` and `clang-tidy` first on `PATH`,
+for when Visual Studio's STL needs a newer clang than the image has), restores `cache-paths` keyed
+on `cache-key-files`, and uploads `artifact-path` as `artifact`. The cache is named by `cache-key`,
+or else the artifact name, so a CI build and a release build of the same thing can share one.
+`container` runs the whole job inside an image on a Linux runner, which is how a toolchain that
+ships as an image builds here. Console homebrew has inputs of its own: `openorbis-version` for the
+[PS4](homebrew/ps4.md), `devkitpro` for the [Switch](homebrew/switch.md), and `msvc-uwp` with
+`ci-msix` for the [Xbox](homebrew/xbox.md). For several platforms or configurations, the caller
+passes a matrix:
 
 ```yaml
 build:
@@ -147,7 +150,8 @@ Name a versioned runner, and hold what ships to a floor:
   else comes from `apt-packages`, so name a C++ standard library new enough for the compiler,
   such as `g++-12` for clang 18. `self-tool-versions` says when the image has a newer build.
 - **`llvm-on-path`**, with `llvm-version`, puts that release's unversioned `clang`, `clang++`,
-  `clang-tidy` and `lld` first on `PATH`, for builds and presets that name plain `clang`.
+  `clang-tidy` and `lld` first on `PATH`, for builds and presets that name plain `clang`. On
+  Windows the release is always first on `PATH`, since its tools carry no version.
 - **`cmake-version`** installs that CMake release from Kitware, checked against the release's
   SHA-256 list, first on `PATH`: an old image's CMake is often older than a project's presets.
 - **`macos-deployment-target`** sets `MACOSX_DEPLOYMENT_TARGET`, which clang, CMake and

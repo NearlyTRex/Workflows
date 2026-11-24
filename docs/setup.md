@@ -62,6 +62,7 @@ Each repo that uses these workflows needs:
 - **Dependency graph and Dependabot alerts** (Settings → Advanced Security). Dependency review
   fails without them:
   `gh api -X PUT repos/OWNER/REPO/vulnerability-alerts`
+
 - **"Allow GitHub Actions to create and approve pull requests"** (Settings → Actions → General),
   for prepare-release, scheduled-update and license-year:
 
