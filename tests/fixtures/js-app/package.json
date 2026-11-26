@@ -4,6 +4,6 @@
   "description": "A Node project whose node --test files python-ci runs through pytest-testrex, under JS coverage and eslint",
   "license": "MIT",
   "devDependencies": {
-    "eslint": "10.14.0"
+    "eslint": "10.15.0"
   }
 }
